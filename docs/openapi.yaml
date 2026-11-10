@@ -1,0 +1,1317 @@
+openapi: 3.0.3
+info:
+  title: AI-buddy API
+  version: 0.1.0
+  description: |
+    Черновой HTTP API для MVP адаптации стажёра.
+    Стажёр знакомится с командой и получает все обязательные доступы.
+    Руководитель рассматривает заявки, назначенные ему на согласование.
+    Бэкенд проверяет права и рассчитывает прогресс по подтверждённым результатам.
+    Вход по почте или ID работает в локальном демо с вымышленными сотрудниками и тестовой выдачей.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Предлагаемый адрес локального бэкенда
+security:
+  - demoIdentity: []
+tags:
+  - name: Auth
+    description: Вход и профиль
+  - name: Onboarding
+    description: План адаптации и задания
+  - name: Chat
+    description: Отдельный диалог для каждого рабочего задания
+  - name: AccessRequests
+    description: Черновики, заявки и согласование
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Найти демо-профиль по почте или внутреннему ID
+      description: |
+        Backend находит сотрудника и его роль в тестовом справочнике.
+        Если профиль уже заполнен, возвращается ready. Для нового стажёра
+        возвращается registration_required и варианты команды и наставника.
+        Профили руководителей подготавливаются заранее.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+            examples:
+              email:
+                value: {identifier: alina.smirnova@example.test}
+              employeeId:
+                value: {identifier: EMP-1001}
+      responses:
+        '200':
+          description: Результат поиска профиля в тестовом справочнике.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+              examples:
+                internReady:
+                  value:
+                    status: ready
+                    profile:
+                      id: intern-alina
+                      employeeId: EMP-1001
+                      fullName: Алина Смирнова
+                      email: alina.smirnova@example.test
+                      role: intern
+                      position: Стажёр Go-разработчик
+                      team: {id: team-search, name: Поиск}
+                      internshipStartDate: '2026-11-09'
+                managerReady:
+                  value:
+                    status: ready
+                    profile:
+                      id: manager-dmitry
+                      employeeId: EMP-2001
+                      fullName: Дмитрий Орлов
+                      email: dmitry.orlov@example.test
+                      role: manager
+                      position: Руководитель команды
+                      team: {id: team-search, name: Поиск}
+                newIntern:
+                  value:
+                    status: registration_required
+                    employeeId: EMP-1002
+                    fullName: Олег Власов
+                    email: oleg.vlasov@example.test
+                    teamOptions:
+                      - id: team-search
+                        name: Поиск
+                        mentors:
+                          - {id: mentor-katya, fullName: Катя Волкова}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Почта или ID отсутствуют в тестовом справочнике.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {code: demo_employee_not_found, message: Проверь демо-почту или внутренний ID.}
+        '409':
+          description: Для сотрудника ещё не подготовлены варианты команды и наставника.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {code: registration_unavailable, message: Обратись к организатору демо.}
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerIntern
+      summary: Заполнить профиль нового стажёра
+      description: |
+        Использует employeeId из результата registration_required в заголовке X-Demo-Employee-Id.
+        Backend проверяет разрешённую команду и принадлежность наставника этой команде.
+        Имя, почта и роль берутся из тестового справочника.
+        Повтор с теми же данными возвращает сохранённый профиль.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationInput'
+            example:
+              teamId: team-search
+              mentorId: mentor-katya
+              internshipStartDate: '2026-11-09'
+      responses:
+        '201':
+          description: Профиль стажёра сохранён. Теперь можно открыть план адаптации.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredIntern'
+              example:
+                id: intern-oleg
+                employeeId: EMP-1002
+                fullName: Олег Власов
+                email: oleg.vlasov@example.test
+                role: intern
+                position: Стажёр Go-разработчик
+                team: {id: team-search, name: Поиск}
+                internshipStartDate: '2026-11-09'
+        '200':
+          description: Профиль с этими данными уже был сохранён.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredIntern'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Для этого сотрудника уже заполнен профиль с другими данными.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {code: profile_already_exists, message: Открой существующий профиль.}
+
+  /me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      summary: Получить профиль текущего пользователя
+      responses:
+        '200':
+          description: Имя, роль, должность, команда и рабочая почта.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /onboarding:
+    get:
+      tags: [Onboarding]
+      operationId: getOnboardingPlan
+      summary: Загрузить экран «Мой план»
+      description: |
+        Доступно стажёру. Возвращает три этапа, следующий шаг, счётчик доступов и данные сайдбара.
+        После выдачи или подтверждения знакомства фронтенд может обновить план этим запросом.
+      responses:
+        '200':
+          description: План текущего стажёра.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingPlan'
+              example:
+                tasks:
+                  - {id: team-intro, title: Знакомство с командой, subtitle: 'Команда, руководитель и наставник', status: completed}
+                  - {id: working-accesses, title: Рабочие доступы, subtitle: Ресурсы команды, status: in_progress}
+                  - {id: first-task, title: Первая задача, subtitle: Учебная задача от руководителя, status: locked}
+                progress: {completed: 1, total: 3}
+                accessProgress: {completed: 2, total: 4}
+                nextTaskId: working-accesses
+                accessRequestSummary: {pending: 0, inProgress: 0, processed: 1}
+                upcomingMeeting:
+                  title: Встреча с наставником
+                  mentorName: Катя Волкова
+                  startsAt: '2026-11-11T11:30:00+03:00'
+                  endsAt: '2026-11-11T12:00:00+03:00'
+                  format: Онлайн
+                  agenda: Обсудить первые дни в команде и рабочие доступы.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /onboarding/tasks/{taskId}:
+    parameters:
+      - $ref: '#/components/parameters/TaskId'
+    get:
+      tags: [Onboarding]
+      operationId: getOnboardingTask
+      summary: Открыть пункт плана
+      description: |
+        Доступно стажёру. Для знакомства возвращает teamIntro, для доступов workingAccesses.
+        Первая задача возвращает описание заглушки и статус locked или coming_soon.
+      responses:
+        '200':
+          description: Карточка выбранного пункта.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetails'
+              examples:
+                teamIntro:
+                  value:
+                    id: team-intro
+                    title: Знакомство с командой
+                    subtitle: Команда, руководитель и наставник
+                    status: completed
+                    description: Узнай, чем занимается команда и к кому обращаться.
+                    chatEnabled: true
+                    teamIntro:
+                      team: {id: team-search, name: Поиск}
+                      description: Команда отвечает за поисковый сервис.
+                      manager: {fullName: Дмитрий Орлов, position: Руководитель команды}
+                      mentor: {fullName: Катя Волкова, position: Наставник, email: katya.volkova@example.test}
+                workingAccesses:
+                  value:
+                    id: working-accesses
+                    title: Рабочие доступы
+                    subtitle: Ресурсы команды
+                    status: in_progress
+                    description: Проверь доступы к ресурсам команды.
+                    chatEnabled: true
+                    workingAccesses:
+                      progress: {completed: 2, total: 4}
+                      resources:
+                        - id: team-wiki
+                          service: wiki
+                          name: Вики команды
+                          accessLevel: Чтение
+                          purpose: Инструкции и процессы команды
+                          status: granted
+                          canRequest: false
+                        - id: youtrack-search
+                          service: youtrack
+                          name: YouTrack
+                          accessLevel: Участник проекта
+                          purpose: Работа с задачами команды
+                          status: granted
+                          canRequest: false
+                          requestId: request-1041
+                        - id: gitlab-search-api
+                          service: gitlab
+                          name: GitLab · search-api
+                          accessLevel: Developer
+                          purpose: Код и работа с ветками
+                          status: requestable
+                          canRequest: true
+                        - id: grafana-search
+                          service: grafana
+                          name: Grafana · Поиск
+                          accessLevel: Чтение
+                          purpose: Дашборды тестового окружения
+                          status: requestable
+                          canRequest: true
+                firstTask:
+                  value:
+                    id: first-task
+                    title: Первая задача
+                    subtitle: Учебная задача от руководителя
+                    status: locked
+                    description: Познакомься с командой и получи обязательные доступы.
+                    chatEnabled: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /onboarding/tasks/team-intro/complete:
+    post:
+      tags: [Onboarding]
+      operationId: completeTeamIntro
+      summary: Отметить знакомство
+      description: Доступно стажёру. Повторное нажатие возвращает актуальный план с сохранённой отметкой.
+      responses:
+        '200':
+          description: План с обновлённым статусом знакомства и прогрессом.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingPlan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /onboarding/tasks/{taskId}/chat:
+    parameters:
+      - $ref: '#/components/parameters/ChatTaskId'
+    get:
+      tags: [Chat]
+      operationId: getTaskChat
+      summary: Получить историю чата и статус последнего ответа
+      description: |
+        Доступно стажёру для своего задания. Пока latestRun имеет статус queued или running,
+        фронтенд периодически запрашивает этот маршрут. Сообщения идут от старых к новым.
+      responses:
+        '200':
+          description: Переписка задания и состояние обработки.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskChat'
+              example:
+                taskId: team-intro
+                messages:
+                  - id: msg-1
+                    role: user
+                    text: Кто мой наставник?
+                    createdAt: '2026-11-10T14:00:00+03:00'
+                  - id: msg-2
+                    role: assistant
+                    text: Твой наставник — Катя Волкова.
+                    createdAt: '2026-11-10T14:00:02+03:00'
+                    replyToMessageId: msg-1
+                    sourceLabel: Карточка команды
+                latestRun: {id: run-1, userMessageId: msg-1, status: completed, assistantMessageId: msg-2}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /onboarding/tasks/{taskId}/chat/messages:
+    parameters:
+      - $ref: '#/components/parameters/ChatTaskId'
+    post:
+      tags: [Chat]
+      operationId: sendTaskChatMessage
+      summary: Отправить вопрос AI-buddy
+      description: |
+        Доступно стажёру для своего задания. Backend сохраняет сообщение и ставит ответ в очередь.
+        В каждом чате одновременно обрабатывается один ответ.
+        Ключ повтора относится к текущему стажёру и заданию. Повтор с тем же ключом
+        и текстом возвращает состояние исходной обработки даже после начала следующего ответа.
+        После ошибки обработки стажёр может отправить вопрос с новым ключом.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatMessageInput'
+            example: {text: 'Кто мой наставник?'}
+      responses:
+        '202':
+          description: Сообщение сохранено. Ответ ожидает обработки или уже готовится.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ChatRun'
+                  - properties:
+                      status: {type: string, enum: [queued, running]}
+              example: {id: run-1, userMessageId: msg-1, status: queued}
+        '200':
+          description: Повтор запроса, обработка которого завершилась.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ChatRun'
+                  - properties:
+                      status: {type: string, enum: [completed, failed]}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: В этом чате уже готовится ответ или этот ключ использован для другого сообщения.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                busy:
+                  value: {code: chat_busy, message: Дождись ответа в этом чате.}
+                keyReused:
+                  value: {code: idempotency_key_reused, message: Для нового сообщения нужен новый ключ.}
+
+  /access-requests/drafts:
+    post:
+      tags: [AccessRequests]
+      operationId: createAccessDraft
+      summary: Подготовить черновик заявки на один или несколько ресурсов
+      description: |
+        Доступно стажёру. Для кнопки «Запросить недостающие» используется all_missing.
+        Для запроса конкретного ресурса используется selected с его идентификатором.
+        Уровни доступа, основания и согласующие определяются на сервере.
+        В skipped возвращаются причины по ресурсам, которые сейчас нельзя добавить в черновик.
+        Для действующей заявки возвращаются её номер, идентификатор и статус.
+        Отправка заявок выполняется после отдельного подтверждения.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessSelection'
+            examples:
+              allMissing:
+                summary: Запросить недостающие
+                value: {mode: all_missing}
+              oneResource:
+                summary: Запросить доступ к GitLab
+                value: {mode: selected, resourceIds: [gitlab-search-api]}
+      responses:
+        '201':
+          description: Черновик для окна «Подтверди отправку».
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessDraft'
+              example:
+                id: draft-1
+                items:
+                  - resourceId: gitlab-search-api
+                    name: GitLab · search-api
+                    accessLevel: Developer
+                    purpose: Код и работа с ветками
+                    approverName: Дмитрий Орлов
+                  - resourceId: grafana-search
+                    name: Grafana · Поиск
+                    accessLevel: Чтение
+                    purpose: Дашборды тестового окружения
+                    approverName: Дмитрий Орлов
+                skipped:
+                  - {resourceId: team-wiki, reason: already_granted}
+                  - {resourceId: youtrack-search, reason: already_granted}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Среди выбранных ресурсов сейчас нет доступов, которые можно запросить.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoRequestableResources'
+              example:
+                code: no_requestable_resources
+                message: По этому ресурсу уже есть заявка.
+                skipped:
+                  - resourceId: gitlab-search-api
+                    reason: already_requested
+                    requestId: request-1042
+                    requestNumber: 1042
+                    requestStatus: pending
+
+  /access-requests/drafts/{draftId}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/DraftId'
+    post:
+      tags: [AccessRequests]
+      operationId: confirmAccessDraft
+      summary: Подтвердить отправку заявок из черновика
+      description: |
+        Доступно стажёру, которому принадлежит черновик. Backend повторно проверяет права и ресурсы.
+        По каждому доступному к запросу ресурсу создаётся отдельная заявка pending.
+        Если активная заявка уже появилась, возвращаются её идентификатор, номер и статус.
+        Новые заявки и результат подтверждения сохраняются атомарно. Повтор того же черновика
+        возвращает сохранённый результат, а карточка заявки показывает актуальный статус.
+        Если изменились параметры, которые требуют нового согласия, весь пакет возвращает 409.
+      responses:
+        '200':
+          description: Результат отправки по каждому ресурсу.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessSubmission'
+              example:
+                draftId: draft-1
+                items:
+                  - {resourceId: gitlab-search-api, outcome: already_requested, requestId: request-1042, requestNumber: 1042, requestStatus: issuing}
+                  - {resourceId: grafana-search, outcome: created, requestId: request-1043, requestNumber: 1043, requestStatus: pending}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Пакет отклонён целиком из-за изменения условий. Стажёру нужен новый черновик.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {code: draft_outdated, message: Подготовь новый черновик и проверь параметры.}
+
+  /access-requests:
+    get:
+      tags: [AccessRequests]
+      operationId: listAccessRequests
+      summary: Получить заявки текущего пользователя
+      description: |
+        Стажёр получает свои заявки. Руководитель получает заявки, назначенные ему на согласование.
+        Фильтр меняет items. Сводка summary считается по всем заявкам в пределах прав пользователя.
+      parameters:
+        - name: group
+          in: query
+          description: |
+            Фильтр интерфейса. in_progress включает pending и issuing.
+            processed включает granted, rejected и provisioning_failed.
+          schema:
+            type: string
+            enum: [all, in_progress, processed]
+            default: all
+      responses:
+        '200':
+          description: Список от новых заявок к старым и сводка для счётчиков.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRequestList'
+              examples:
+                noProcessedRequests:
+                  summary: Фильтр processed, все заявки ещё на согласовании
+                  value:
+                    items: []
+                    summary: {pending: 2, inProgress: 2, processed: 0}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /access-requests/{requestId}:
+    parameters:
+      - $ref: '#/components/parameters/AccessRequestId'
+    get:
+      tags: [AccessRequests]
+      operationId: getAccessRequest
+      summary: Открыть карточку заявки
+      description: |
+        Доступно стажёру-владельцу и назначенному согласующему.
+        Пока статус issuing, фронтенд может периодически запрашивать карточку.
+      responses:
+        '200':
+          description: Ресурс, уровень, основание, участники и текущий статус.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRequest'
+              example:
+                id: request-1042
+                number: 1042
+                resource:
+                  resourceId: gitlab-search-api
+                  name: GitLab · search-api
+                  accessLevel: Developer
+                  purpose: Код и работа с ветками
+                requester: {id: intern-alina, fullName: Алина Смирнова}
+                team: {id: team-search, name: Поиск}
+                approver: {id: manager-dmitry, fullName: Дмитрий Орлов}
+                status: pending
+                createdAt: '2026-11-10T14:00:00+03:00'
+                updatedAt: '2026-11-10T14:00:00+03:00'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /access-requests/{requestId}/decision:
+    parameters:
+      - $ref: '#/components/parameters/AccessRequestId'
+    post:
+      tags: [AccessRequests]
+      operationId: decideAccessRequest
+      summary: Одобрить или отклонить заявку
+      description: |
+        Доступно назначенному согласующему для заявки pending.
+        Одобрение запускает фоновую выдачу со статусом issuing.
+        Решение и задание на выдачу сохраняются вместе. Из одновременных решений применяется первое.
+        После подтверждения тестовым сервисом заявка получает статус granted.
+        При отклонении стажёр видит комментарий руководителя.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessDecision'
+            examples:
+              approve:
+                value: {decision: approve}
+              reject:
+                value: {decision: reject, comment: Уточни назначение доступа.}
+      responses:
+        '200':
+          description: Решение сохранено. Возвращается заявка в состоянии issuing или rejected.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/AccessRequest'
+                  - properties:
+                      status: {type: string, enum: [issuing, rejected]}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: По заявке уже принято решение.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {code: decision_already_taken, message: Обнови карточку заявки.}
+
+components:
+  securitySchemes:
+    demoIdentity:
+      type: apiKey
+      in: header
+      name: X-Demo-Employee-Id
+      description: |
+        Внутренний ID вымышленного сотрудника из POST /auth/login.
+        Интерфейс держит ID в памяти вкладки и заново запрашивает его при открытии или перезагрузке.
+        Backend проверяет роль по справочнику при каждом запросе. Для рабочих экранов нужен
+        заполненный профиль. Заголовок предназначен для изолированного демо.
+
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/TaskId'
+    ChatTaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ChatTaskId'
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema: {type: string, example: draft-1}
+    AccessRequestId:
+      name: requestId
+      in: path
+      required: true
+      description: Идентификатор из поля id. Поле number используется для отображения.
+      schema: {type: string, example: request-1042}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID сообщения в чате. Повтор запроса использует тот же ключ и текст.
+      schema: {type: string, format: uuid}
+
+  responses:
+    BadRequest:
+      description: Входные данные не соответствуют контракту.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: invalid_input, message: Проверь поля запроса.}
+    Unauthorized:
+      description: Нужен известный демо-ID в заголовке X-Demo-Employee-Id.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: demo_identity_required, message: Введи демо-почту или внутренний ID.}
+    Forbidden:
+      description: Действие ограничено ролью или требует заполненного профиля.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            forbidden:
+              value: {code: forbidden, message: Действие недоступно для этой роли.}
+            profileRequired:
+              value: {code: profile_required, message: Заполни профиль стажёра.}
+    NotFound:
+      description: Объект отсутствует или закрыт для текущего пользователя.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: not_found, message: Запрошенный объект недоступен.}
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string, example: invalid_input}
+        message: {type: string, example: Проверь поля запроса.}
+
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required: [identifier]
+      properties:
+        identifier:
+          type: string
+          minLength: 1
+          maxLength: 254
+          pattern: '\S'
+          description: Рабочая почта или внутренний ID сотрудника из тестового справочника.
+          example: EMP-1001
+
+    LoginResult:
+      oneOf:
+        - $ref: '#/components/schemas/ReadyProfile'
+        - $ref: '#/components/schemas/RegistrationRequired'
+      discriminator:
+        propertyName: status
+        mapping:
+          ready: '#/components/schemas/ReadyProfile'
+          registration_required: '#/components/schemas/RegistrationRequired'
+
+    ReadyProfile:
+      type: object
+      additionalProperties: false
+      required: [status, profile]
+      properties:
+        status: {type: string, enum: [ready]}
+        profile:
+          $ref: '#/components/schemas/Profile'
+
+    RegistrationRequired:
+      type: object
+      additionalProperties: false
+      required: [status, employeeId, fullName, email, teamOptions]
+      properties:
+        status: {type: string, enum: [registration_required]}
+        employeeId: {type: string, example: EMP-1002}
+        fullName: {type: string, example: Олег Власов}
+        email: {type: string, format: email, example: oleg.vlasov@example.test}
+        teamOptions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RegistrationTeam'
+
+    RegistrationTeam:
+      allOf:
+        - $ref: '#/components/schemas/TeamRef'
+        - type: object
+          required: [mentors]
+          properties:
+            mentors:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/PersonRef'
+
+    RegistrationInput:
+      type: object
+      additionalProperties: false
+      required: [teamId, mentorId, internshipStartDate]
+      properties:
+        teamId: {type: string, minLength: 1, example: team-search}
+        mentorId: {type: string, minLength: 1, example: mentor-katya}
+        internshipStartDate: {type: string, format: date, example: '2026-11-09'}
+
+    RegisteredIntern:
+      allOf:
+        - $ref: '#/components/schemas/Profile'
+        - properties:
+            role: {type: string, enum: [intern]}
+
+    Profile:
+      type: object
+      required: [id, employeeId, fullName, email, role, position, team]
+      properties:
+        id: {type: string, example: intern-alina}
+        employeeId: {type: string, example: EMP-1001}
+        fullName: {type: string, example: Алина Смирнова}
+        email: {type: string, format: email, example: alina.smirnova@example.test}
+        role: {type: string, enum: [intern, manager], example: intern}
+        position: {type: string, example: Стажёр Go-разработчик}
+        team:
+          $ref: '#/components/schemas/TeamRef'
+        internshipStartDate:
+          type: string
+          format: date
+          example: '2026-11-09'
+      oneOf:
+        - properties:
+            role: {type: string, enum: [intern]}
+          required: [internshipStartDate]
+        - properties:
+            role: {type: string, enum: [manager]}
+
+    TeamRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string, example: team-search}
+        name: {type: string, example: Поиск}
+
+    TaskId:
+      type: string
+      enum: [team-intro, working-accesses, first-task]
+
+    ChatTaskId:
+      type: string
+      enum: [team-intro, working-accesses]
+
+    TaskSummary:
+      type: object
+      required: [id, title, subtitle, status]
+      properties:
+        id:
+          $ref: '#/components/schemas/TaskId'
+        title: {type: string, example: Рабочие доступы}
+        subtitle: {type: string, example: Ресурсы команды}
+        status:
+          type: string
+          enum: [not_started, in_progress, completed, locked, coming_soon]
+          description: |
+            team-intro завершается после отметки стажёра.
+            working-accesses завершается после подтверждения всех обязательных доступов.
+            first-task получает coming_soon после завершения двух рабочих пунктов.
+      oneOf:
+        - properties:
+            id: {type: string, enum: [team-intro, working-accesses]}
+            status: {type: string, enum: [not_started, in_progress, completed]}
+        - properties:
+            id: {type: string, enum: [first-task]}
+            status: {type: string, enum: [locked, coming_soon]}
+
+    TaskDetails:
+      allOf:
+        - $ref: '#/components/schemas/TaskSummary'
+        - type: object
+          required: [description, chatEnabled]
+          properties:
+            description: {type: string, example: Проверь доступы к ресурсам команды.}
+            chatEnabled: {type: boolean, example: true}
+            teamIntro:
+              $ref: '#/components/schemas/TeamIntro'
+            workingAccesses:
+              $ref: '#/components/schemas/WorkingAccesses'
+          oneOf:
+            - required: [teamIntro]
+              properties:
+                id: {type: string, enum: [team-intro]}
+                chatEnabled: {type: boolean, enum: [true]}
+              not:
+                required: [workingAccesses]
+            - required: [workingAccesses]
+              properties:
+                id: {type: string, enum: [working-accesses]}
+                chatEnabled: {type: boolean, enum: [true]}
+              not:
+                required: [teamIntro]
+            - properties:
+                id: {type: string, enum: [first-task]}
+                chatEnabled: {type: boolean, enum: [false]}
+              not:
+                anyOf:
+                  - required: [teamIntro]
+                  - required: [workingAccesses]
+
+    Progress:
+      type: object
+      description: completed показывает число подтверждённых ресурсов и ограничен значением total.
+      required: [completed, total]
+      properties:
+        completed: {type: integer, minimum: 0, example: 2}
+        total: {type: integer, minimum: 0, example: 4}
+
+    PlanProgress:
+      type: object
+      description: Прогресс по трём этапам плана. В MVP два этапа можно завершить.
+      required: [completed, total]
+      properties:
+        completed: {type: integer, minimum: 0, maximum: 2, example: 1}
+        total: {type: integer, enum: [3], example: 3}
+
+    OnboardingPlan:
+      type: object
+      description: |
+        progress.completed считается по завершённым карточкам.
+        accessProgress считается по подтверждённым обязательным ресурсам.
+        nextTaskId указывает на первый незавершённый этап в порядке плана.
+      required: [tasks, progress, accessProgress, nextTaskId, accessRequestSummary]
+      properties:
+        tasks:
+          type: array
+          minItems: 3
+          maxItems: 3
+          description: По одной карточке для team-intro, working-accesses и first-task в этом порядке.
+          items:
+            $ref: '#/components/schemas/TaskSummary'
+        progress:
+          $ref: '#/components/schemas/PlanProgress'
+        accessProgress:
+          $ref: '#/components/schemas/Progress'
+        nextTaskId:
+          $ref: '#/components/schemas/TaskId'
+        accessRequestSummary:
+          $ref: '#/components/schemas/AccessRequestSummary'
+        upcomingMeeting:
+          $ref: '#/components/schemas/Meeting'
+
+    AccessRequestSummary:
+      type: object
+      required: [pending, inProgress, processed]
+      properties:
+        pending: {type: integer, minimum: 0, description: Число заявок на согласовании., example: 1}
+        inProgress: {type: integer, minimum: 0, description: Число заявок на согласовании и выдаче., example: 2}
+        processed: {type: integer, minimum: 0, description: Число выданных и отклонённых заявок и заявок с итоговой ошибкой выдачи., example: 2}
+
+    Meeting:
+      type: object
+      required: [title, mentorName, startsAt, endsAt, format, agenda]
+      properties:
+        title: {type: string, example: Встреча с наставником}
+        mentorName: {type: string, example: Катя Волкова}
+        startsAt: {type: string, format: date-time, example: '2026-11-11T11:30:00+03:00'}
+        endsAt: {type: string, format: date-time, example: '2026-11-11T12:00:00+03:00'}
+        format: {type: string, example: Онлайн}
+        agenda: {type: string, example: Обсудить первые дни в команде и рабочие доступы.}
+
+    TeamIntro:
+      type: object
+      required: [team, description, manager, mentor]
+      properties:
+        team:
+          $ref: '#/components/schemas/TeamRef'
+        description: {type: string, example: Команда отвечает за поисковый сервис.}
+        manager:
+          $ref: '#/components/schemas/Contact'
+        mentor:
+          $ref: '#/components/schemas/Contact'
+
+    Contact:
+      type: object
+      required: [fullName, position]
+      properties:
+        fullName: {type: string, example: Катя Волкова}
+        position: {type: string, example: Наставник}
+        email: {type: string, format: email, example: katya.volkova@example.test}
+
+    WorkingAccesses:
+      type: object
+      required: [resources, progress]
+      properties:
+        resources:
+          type: array
+          description: Обязательные ресурсы, назначенные команде и роли стажёра.
+          items:
+            $ref: '#/components/schemas/AccessResource'
+        progress:
+          allOf:
+            - $ref: '#/components/schemas/Progress'
+          description: Количество ресурсов с подтверждённым доступом из всех обязательных.
+
+    AccessResource:
+      type: object
+      required: [id, service, name, accessLevel, purpose, status, canRequest]
+      properties:
+        id: {type: string, example: gitlab-search-api}
+        service: {type: string, enum: [wiki, youtrack, gitlab, grafana], example: gitlab}
+        name: {type: string, example: GitLab · search-api}
+        accessLevel: {type: string, example: Developer}
+        purpose: {type: string, example: Код и работа с ветками}
+        status:
+          type: string
+          enum: [requestable, pending, issuing, granted, rejected, provisioning_failed]
+        canRequest:
+          type: boolean
+          description: |
+            Можно включить ресурс в новый черновик. При подтверждённом сбое этот флаг
+            позволяет запустить новый запрос через тот же процесс согласования.
+        requestId: {type: string, description: 'Идентификатор последней заявки по ресурсу, если она есть.'}
+      oneOf:
+        - properties:
+            status: {type: string, enum: [requestable]}
+            canRequest: {type: boolean, enum: [true]}
+        - required: [requestId]
+          properties:
+            status: {type: string, enum: [pending, issuing]}
+            canRequest: {type: boolean, enum: [false]}
+        - properties:
+            status: {type: string, enum: [granted]}
+            canRequest: {type: boolean, enum: [false]}
+        - required: [requestId]
+          properties:
+            status: {type: string, enum: [rejected, provisioning_failed]}
+
+    ChatMessageInput:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 450
+          pattern: '\S'
+          example: Кто мой наставник?
+
+    ChatMessage:
+      type: object
+      required: [id, role, text, createdAt]
+      properties:
+        id: {type: string, example: msg-1}
+        role: {type: string, enum: [user, assistant]}
+        text: {type: string, example: Твой наставник — Катя Волкова.}
+        createdAt: {type: string, format: date-time}
+        replyToMessageId: {type: string, description: Исходное сообщение для ответа помощника.}
+        sourceLabel: {type: string, example: Карточка команды}
+        accessDraft:
+          allOf:
+            - $ref: '#/components/schemas/AccessDraft'
+          description: Карточка черновика в ответе помощника внутри чата рабочих доступов.
+
+    TaskChat:
+      type: object
+      required: [taskId, messages]
+      properties:
+        taskId:
+          $ref: '#/components/schemas/ChatTaskId'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        latestRun:
+          allOf:
+            - $ref: '#/components/schemas/ChatRun'
+          description: Последняя обработка сообщения. Поле появляется после отправки вопроса.
+
+    ChatRun:
+      type: object
+      required: [id, userMessageId, status]
+      properties:
+        id: {type: string, example: run-1}
+        userMessageId: {type: string, example: msg-1}
+        status: {type: string, enum: [queued, running, completed, failed]}
+        assistantMessageId: {type: string, description: Идентификатор сохранённого ответа при completed.}
+        error:
+          allOf:
+            - $ref: '#/components/schemas/Error'
+          description: Сообщение об ошибке обработки при failed.
+      oneOf:
+        - properties:
+            status: {type: string, enum: [queued, running]}
+          not:
+            anyOf:
+              - required: [assistantMessageId]
+              - required: [error]
+        - properties:
+            status: {type: string, enum: [completed]}
+          required: [assistantMessageId]
+          not:
+            required: [error]
+        - properties:
+            status: {type: string, enum: [failed]}
+          required: [error]
+          not:
+            required: [assistantMessageId]
+
+    AccessSelection:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [mode]
+          properties:
+            mode: {type: string, enum: [all_missing]}
+        - type: object
+          additionalProperties: false
+          required: [mode, resourceIds]
+          properties:
+            mode: {type: string, enum: [selected]}
+            resourceIds:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: {type: string, minLength: 1}
+              example: [gitlab-search-api, grafana-search]
+
+    AccessDraft:
+      type: object
+      required: [id, items, skipped]
+      properties:
+        id: {type: string, example: draft-1}
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AccessDraftItem'
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkippedResource'
+
+    RequestedResource:
+      type: object
+      required: [resourceId, name, accessLevel, purpose]
+      properties:
+        resourceId: {type: string, example: gitlab-search-api}
+        name: {type: string, example: GitLab · search-api}
+        accessLevel: {type: string, example: Developer}
+        purpose: {type: string, example: Код и работа с ветками}
+
+    AccessDraftItem:
+      allOf:
+        - $ref: '#/components/schemas/RequestedResource'
+        - type: object
+          required: [approverName]
+          properties:
+            approverName: {type: string, example: Дмитрий Орлов}
+
+    ActiveRequestRef:
+      type: object
+      required: [requestId, requestNumber, requestStatus]
+      properties:
+        requestId: {type: string, example: request-1042}
+        requestNumber: {type: integer, minimum: 1, example: 1042}
+        requestStatus: {type: string, enum: [pending, issuing], example: pending}
+
+    SkippedResource:
+      oneOf:
+        - allOf:
+            - $ref: '#/components/schemas/ActiveRequestRef'
+            - type: object
+              required: [resourceId, reason]
+              properties:
+                resourceId: {type: string, example: gitlab-search-api}
+                reason: {type: string, enum: [already_requested]}
+        - type: object
+          additionalProperties: false
+          required: [resourceId, reason]
+          properties:
+            resourceId: {type: string, example: team-wiki}
+            reason: {type: string, enum: [already_granted, unavailable]}
+
+    NoRequestableResources:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [skipped]
+          properties:
+            code: {type: string, enum: [no_requestable_resources]}
+            skipped:
+              type: array
+              items:
+                $ref: '#/components/schemas/SkippedResource'
+
+    AccessSubmission:
+      type: object
+      required: [draftId, items]
+      properties:
+        draftId: {type: string, example: draft-1}
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AccessSubmissionItem'
+
+    AccessSubmissionItem:
+      oneOf:
+        - allOf:
+            - $ref: '#/components/schemas/ActiveRequestRef'
+            - type: object
+              required: [resourceId, outcome]
+              properties:
+                resourceId: {type: string, example: gitlab-search-api}
+                outcome: {type: string, enum: [created]}
+                requestStatus: {type: string, enum: [pending]}
+        - allOf:
+            - $ref: '#/components/schemas/ActiveRequestRef'
+            - type: object
+              required: [resourceId, outcome]
+              properties:
+                resourceId: {type: string, example: gitlab-search-api}
+                outcome: {type: string, enum: [already_requested]}
+        - type: object
+          additionalProperties: false
+          required: [resourceId, outcome]
+          properties:
+            resourceId: {type: string, example: team-wiki}
+            outcome: {type: string, enum: [already_granted, unavailable]}
+
+    AccessRequestList:
+      type: object
+      required: [items, summary]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessRequest'
+        summary:
+          $ref: '#/components/schemas/AccessRequestSummary'
+
+    AccessRequest:
+      type: object
+      required: [id, number, resource, requester, team, approver, status, createdAt, updatedAt]
+      properties:
+        id: {type: string, example: request-1042}
+        number: {type: integer, minimum: 1, example: 1042}
+        resource:
+          $ref: '#/components/schemas/RequestedResource'
+        requester:
+          $ref: '#/components/schemas/PersonRef'
+        team:
+          $ref: '#/components/schemas/TeamRef'
+        approver:
+          $ref: '#/components/schemas/PersonRef'
+        status:
+          type: string
+          enum: [pending, issuing, granted, rejected, provisioning_failed]
+          description: |
+            pending — на согласовании. issuing — выдача или проверка результата после таймаута.
+            granted — доступ подтверждён. rejected — отклонена.
+            provisioning_failed — сбой подтверждён после проверки текущего доступа.
+        decisionComment:
+          type: string
+          minLength: 1
+          pattern: '\S'
+          description: Комментарий руководителя при отклонении.
+        provisioningError:
+          allOf:
+            - $ref: '#/components/schemas/Error'
+          description: Понятное пользователю сообщение о сбое и следующем шаге.
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+      oneOf:
+        - properties:
+            status: {type: string, enum: [pending, issuing, granted]}
+          not:
+            anyOf:
+              - required: [decisionComment]
+              - required: [provisioningError]
+        - properties:
+            status: {type: string, enum: [rejected]}
+          required: [decisionComment]
+          not:
+            required: [provisioningError]
+        - properties:
+            status: {type: string, enum: [provisioning_failed]}
+          required: [provisioningError]
+          not:
+            required: [decisionComment]
+
+    PersonRef:
+      type: object
+      required: [id, fullName]
+      properties:
+        id: {type: string, example: intern-alina}
+        fullName: {type: string, example: Алина Смирнова}
+
+    AccessDecision:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [decision]
+          properties:
+            decision: {type: string, enum: [approve]}
+        - type: object
+          additionalProperties: false
+          required: [decision, comment]
+          properties:
+            decision: {type: string, enum: [reject]}
+            comment:
+              type: string
+              minLength: 1
+              maxLength: 200
+              pattern: '\S'
+              description: Причина отклонения. Пробелы по краям удаляются перед проверкой.
