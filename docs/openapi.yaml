@@ -3,11 +3,9 @@ info:
   title: AI-buddy API
   version: 0.1.0
   description: |
-    Черновой HTTP API для MVP адаптации стажёра.
+    HTTP API для MVP адаптации стажёра.
     Стажёр знакомится с командой и получает все обязательные доступы.
     Руководитель рассматривает заявки, назначенные ему на согласование.
-    Бэкенд проверяет права и рассчитывает прогресс по подтверждённым результатам.
-    Вход по почте или ID работает в локальном демо с вымышленными сотрудниками и тестовой выдачей.
 servers:
   - url: http://localhost:8080/api/v1
     description: Предлагаемый адрес локального бэкенда
@@ -31,9 +29,9 @@ paths:
       summary: Найти демо-профиль по почте или внутреннему ID
       description: |
         Backend находит сотрудника и его роль в тестовом справочнике.
-        Если профиль уже заполнен, возвращается ready. Для нового стажёра
-        возвращается registration_required и варианты команды и наставника.
-        Профили руководителей подготавливаются заранее.
+        Если профиль уже заполнен, возвращается ready и роль для выбора экрана.
+        При первом входе возвращается registration_required с вариантами команды,
+        наставника и должности. Для стажёра доступны команды с наставниками.
       security: []
       requestBody:
         required: true
@@ -83,11 +81,15 @@ paths:
                     employeeId: EMP-1002
                     fullName: Олег Власов
                     email: oleg.vlasov@example.test
+                    role: intern
+                    positionId: position-go-intern
                     teamOptions:
                       - id: team-search
                         name: Поиск
                         mentors:
                           - {id: mentor-katya, fullName: Катя Волкова}
+                    positionOptions:
+                      - {id: position-go-intern, name: Стажёр Go-разработчик}
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -98,7 +100,7 @@ paths:
                 $ref: '#/components/schemas/Error'
               example: {code: demo_employee_not_found, message: Проверь демо-почту или внутренний ID.}
         '409':
-          description: Для сотрудника ещё не подготовлены варианты команды и наставника.
+          description: В справочниках нет подходящих команд или должностей.
           content:
             application/json:
               schema:
@@ -108,12 +110,15 @@ paths:
   /auth/register:
     post:
       tags: [Auth]
-      operationId: registerIntern
-      summary: Заполнить профиль нового стажёра
+      operationId: registerProfile
+      summary: Заполнить профиль сотрудника
       description: |
         Использует employeeId из результата registration_required в заголовке X-Demo-Employee-Id.
-        Backend проверяет разрешённую команду и принадлежность наставника этой команде.
-        Имя, почта и роль берутся из тестового справочника.
+        Backend проверяет команду, должность и принадлежность наставника команде.
+        Стажёр указывает наставника и дату начала стажировки. Руководитель указывает команду
+        и может выбрать должность. Если positionId пропущен, используется текущая должность.
+        Имя, почта и роль берутся из тестового справочника. Должность и профиль сохраняются
+        в одной транзакции.
         Повтор с теми же данными возвращает сохранённый профиль.
       requestBody:
         required: true
@@ -123,15 +128,16 @@ paths:
               $ref: '#/components/schemas/RegistrationInput'
             example:
               teamId: team-search
+              positionId: position-go-intern
               mentorId: mentor-katya
               internshipStartDate: '2026-11-09'
       responses:
         '201':
-          description: Профиль стажёра сохранён. Теперь можно открыть план адаптации.
+          description: Профиль сохранён. Интерфейс открывает экран по роли сотрудника.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RegisteredIntern'
+                $ref: '#/components/schemas/Profile'
               example:
                 id: intern-oleg
                 employeeId: EMP-1002
@@ -146,7 +152,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RegisteredIntern'
+                $ref: '#/components/schemas/Profile'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -774,17 +780,24 @@ components:
     RegistrationRequired:
       type: object
       additionalProperties: false
-      required: [status, employeeId, fullName, email, teamOptions]
+      required: [status, employeeId, fullName, email, role, positionId, teamOptions, positionOptions]
       properties:
         status: {type: string, enum: [registration_required]}
         employeeId: {type: string, example: EMP-1002}
         fullName: {type: string, example: Олег Власов}
         email: {type: string, format: email, example: oleg.vlasov@example.test}
+        role: {type: string, enum: [intern, manager], example: intern}
+        positionId: {type: string, example: position-go-intern}
         teamOptions:
           type: array
           minItems: 1
           items:
             $ref: '#/components/schemas/RegistrationTeam'
+        positionOptions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PositionRef'
 
     RegistrationTeam:
       allOf:
@@ -794,24 +807,33 @@ components:
           properties:
             mentors:
               type: array
-              minItems: 1
               items:
                 $ref: '#/components/schemas/PersonRef'
 
     RegistrationInput:
       type: object
       additionalProperties: false
-      required: [teamId, mentorId, internshipStartDate]
+      required: [teamId]
       properties:
         teamId: {type: string, minLength: 1, example: team-search}
-        mentorId: {type: string, minLength: 1, example: mentor-katya}
-        internshipStartDate: {type: string, format: date, example: '2026-11-09'}
+        positionId: {type: string, minLength: 1, example: position-go-intern}
+        mentorId:
+          type: string
+          minLength: 1
+          description: Обязательно для стажёра. Руководитель пропускает поле.
+          example: mentor-katya
+        internshipStartDate:
+          type: string
+          format: date
+          description: Обязательно для стажёра. Руководитель пропускает поле.
+          example: '2026-11-09'
 
-    RegisteredIntern:
-      allOf:
-        - $ref: '#/components/schemas/Profile'
-        - properties:
-            role: {type: string, enum: [intern]}
+    PositionRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string, example: position-go-intern}
+        name: {type: string, example: Стажёр Go-разработчик}
 
     Profile:
       type: object
