@@ -30,8 +30,8 @@ paths:
       description: |
         Backend находит сотрудника и его роль в тестовом справочнике.
         Если профиль уже заполнен, возвращается ready и роль для выбора экрана.
-        При первом входе возвращается registration_required с вариантами команды,
-        наставника и должности. Для стажёра доступны команды с наставниками.
+        При первом входе возвращается registration_required с назначенной командой,
+        её наставниками и вариантами должности.
       security: []
       requestBody:
         required: true
@@ -58,11 +58,13 @@ paths:
                     profile:
                       id: intern-alina
                       employeeId: EMP-1001
-                      fullName: Алина Смирнова
+                      firstName: Алина
+                      secondName: Смирнова
                       email: alina.smirnova@example.test
                       role: intern
                       position: Стажёр Go-разработчик
                       team: {id: team-search, name: Поиск}
+                      mentor: {id: mentor-katya, firstName: Катя, secondName: Волкова}
                       internshipStartDate: '2026-11-09'
                 managerReady:
                   value:
@@ -70,7 +72,8 @@ paths:
                     profile:
                       id: manager-dmitry
                       employeeId: EMP-2001
-                      fullName: Дмитрий Орлов
+                      firstName: Дмитрий
+                      secondName: Орлов
                       email: dmitry.orlov@example.test
                       role: manager
                       position: Руководитель команды
@@ -79,15 +82,16 @@ paths:
                   value:
                     status: registration_required
                     employeeId: EMP-1002
-                    fullName: Олег Власов
+                    firstName: Олег
+                    secondName: Власов
                     email: oleg.vlasov@example.test
                     role: intern
                     positionId: position-go-intern
-                    teamOptions:
-                      - id: team-search
-                        name: Поиск
-                        mentors:
-                          - {id: mentor-katya, fullName: Катя Волкова}
+                    team:
+                      id: team-search
+                      name: Поиск
+                      mentors:
+                        - {id: mentor-katya, firstName: Катя, secondName: Волкова}
                     positionOptions:
                       - {id: position-go-intern, name: Стажёр Go-разработчик}
         '400':
@@ -100,7 +104,7 @@ paths:
                 $ref: '#/components/schemas/Error'
               example: {code: demo_employee_not_found, message: Проверь демо-почту или внутренний ID.}
         '409':
-          description: В справочниках нет подходящих команд или должностей.
+          description: Назначенная команда, наставники или должности не подготовлены в справочниках.
           content:
             application/json:
               schema:
@@ -114,9 +118,10 @@ paths:
       summary: Заполнить профиль сотрудника
       description: |
         Использует employeeId из результата registration_required в заголовке X-Demo-Employee-Id.
-        Backend проверяет команду, должность и принадлежность наставника команде.
-        Стажёр указывает наставника и дату начала стажировки. Руководитель указывает команду
-        и может выбрать должность. Если positionId пропущен, используется текущая должность.
+        Команда назначена сотруднику в корпоративном справочнике и в форме доступна для просмотра.
+        Backend проверяет должность и принадлежность наставника назначенной команде.
+        Стажёр указывает наставника и дату начала стажировки. Руководитель может выбрать должность.
+        Если positionId пропущен, используется текущая должность.
         Имя, почта и роль берутся из тестового справочника. Должность и профиль сохраняются
         в одной транзакции.
         Повтор с теми же данными возвращает сохранённый профиль.
@@ -127,7 +132,6 @@ paths:
             schema:
               $ref: '#/components/schemas/RegistrationInput'
             example:
-              teamId: team-search
               positionId: position-go-intern
               mentorId: mentor-katya
               internshipStartDate: '2026-11-09'
@@ -141,11 +145,13 @@ paths:
               example:
                 id: intern-oleg
                 employeeId: EMP-1002
-                fullName: Олег Власов
+                firstName: Олег
+                secondName: Власов
                 email: oleg.vlasov@example.test
                 role: intern
                 position: Стажёр Go-разработчик
                 team: {id: team-search, name: Поиск}
+                mentor: {id: mentor-katya, firstName: Катя, secondName: Волкова}
                 internshipStartDate: '2026-11-09'
         '200':
           description: Профиль с этими данными уже был сохранён.
@@ -780,19 +786,17 @@ components:
     RegistrationRequired:
       type: object
       additionalProperties: false
-      required: [status, employeeId, fullName, email, role, positionId, teamOptions, positionOptions]
+      required: [status, employeeId, firstName, secondName, email, role, positionId, team, positionOptions]
       properties:
         status: {type: string, enum: [registration_required]}
         employeeId: {type: string, example: EMP-1002}
-        fullName: {type: string, example: Олег Власов}
+        firstName: {type: string, example: Олег}
+        secondName: {type: string, example: Власов}
         email: {type: string, format: email, example: oleg.vlasov@example.test}
         role: {type: string, enum: [intern, manager], example: intern}
         positionId: {type: string, example: position-go-intern}
-        teamOptions:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/RegistrationTeam'
+        team:
+          $ref: '#/components/schemas/RegistrationTeam'
         positionOptions:
           type: array
           minItems: 1
@@ -808,14 +812,12 @@ components:
             mentors:
               type: array
               items:
-                $ref: '#/components/schemas/PersonRef'
+                $ref: '#/components/schemas/RegistrationMentor'
 
     RegistrationInput:
       type: object
       additionalProperties: false
-      required: [teamId]
       properties:
-        teamId: {type: string, minLength: 1, example: team-search}
         positionId: {type: string, minLength: 1, example: position-go-intern}
         mentorId:
           type: string
@@ -828,6 +830,14 @@ components:
           description: Обязательно для стажёра. Руководитель пропускает поле.
           example: '2026-11-09'
 
+    RegistrationMentor:
+      type: object
+      required: [id, firstName, secondName]
+      properties:
+        id: {type: string, example: mentor-katya}
+        firstName: {type: string, example: Катя}
+        secondName: {type: string, example: Волкова}
+
     PositionRef:
       type: object
       required: [id, name]
@@ -837,16 +847,20 @@ components:
 
     Profile:
       type: object
-      required: [id, employeeId, fullName, email, role, position, team]
+      required: [id, employeeId, firstName, secondName, email, role, position, team]
       properties:
         id: {type: string, example: intern-alina}
         employeeId: {type: string, example: EMP-1001}
-        fullName: {type: string, example: Алина Смирнова}
+        firstName: {type: string, example: Алина}
+        secondName: {type: string, example: Смирнова}
         email: {type: string, format: email, example: alina.smirnova@example.test}
         role: {type: string, enum: [intern, manager], example: intern}
         position: {type: string, example: Стажёр Go-разработчик}
         team:
           $ref: '#/components/schemas/TeamRef'
+        mentor:
+          $ref: '#/components/schemas/RegistrationMentor'
+          description: Заполнен, если у сотрудника назначен наставник.
         internshipStartDate:
           type: string
           format: date

@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/1BaEdeV/am-cp-ai-buddy/backend/models"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -23,6 +23,42 @@ func NewService(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
+// Me загружает профиль по внутреннему ID из заголовка демо-авторизации.
+func (s *Service) Me(ctx context.Context, employeeID string) (Profile, error) {
+	employeeID = strings.TrimSpace(employeeID)
+	if employeeID == "" {
+		return Profile{}, ErrEmployeeNotFound
+	}
+
+	var result Profile
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var employee models.Employee
+		err := tx.Preload("Position").Preload("Team").Take(&employee, "id = ?", employeeID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrEmployeeNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("найти сотрудника: %w", err)
+		}
+		if employee.Role != models.RoleIntern && employee.Role != models.RoleManager {
+			return ErrForbidden
+		}
+		profile, err := findProfile(tx, employee.ID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrProfileRequired
+		}
+		if err != nil {
+			return fmt.Errorf("найти профиль: %w", err)
+		}
+		result = profileView(profile, employee)
+		return nil
+	}, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return Profile{}, err
+	}
+	return result, nil
+}
+
 // Login ищет сотрудника в демо-справочнике и возвращает профиль или данные для формы.
 func (s *Service) Login(ctx context.Context, identifier string) (LoginResult, error) {
 	identifier = strings.TrimSpace(identifier)
@@ -33,9 +69,9 @@ func (s *Service) Login(ctx context.Context, identifier string) (LoginResult, er
 	var result LoginResult
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var employee models.Employee
-		err := tx.Preload("Position").Take(&employee, "id = ?", identifier).Error
+		err := tx.Preload("Position").Preload("Team").Take(&employee, "id = ?", identifier).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) && strings.Contains(identifier, "@") {
-			err = tx.Preload("Position").Take(&employee, "lower(email) = lower(?)", identifier).Error
+			err = tx.Preload("Position").Preload("Team").Take(&employee, "lower(email) = lower(?)", identifier).Error
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrEmployeeNotFound
@@ -69,13 +105,9 @@ func (s *Service) Register(ctx context.Context, employeeID string, input Registr
 	if employeeID == "" {
 		return Profile{}, false, ErrEmployeeNotFound
 	}
-	input.TeamID = strings.TrimSpace(input.TeamID)
 	input.PositionID = strings.TrimSpace(input.PositionID)
 	input.MentorID = strings.TrimSpace(input.MentorID)
 	input.InternshipStartDate = strings.TrimSpace(input.InternshipStartDate)
-	if input.TeamID == "" {
-		return Profile{}, false, fmt.Errorf("%w: выбери команду", ErrInvalidInput)
-	}
 
 	var result Profile
 	var created bool
@@ -83,7 +115,7 @@ func (s *Service) Register(ctx context.Context, employeeID string, input Registr
 		var employee models.Employee
 		// Строка сотрудника существует ещё до профиля. Параллельный запрос дождётся её освобождения.
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Preload("Position").
+			Preload("Position").Preload("Team").
 			Take(&employee, "id = ?", employeeID).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrEmployeeNotFound
@@ -104,8 +136,7 @@ func (s *Service) Register(ctx context.Context, employeeID string, input Registr
 		profile, err := findProfile(tx, employee.ID)
 		switch {
 		case err == nil:
-			if profile.TeamID != input.TeamID ||
-				mentorID(profile) != input.MentorID ||
+			if mentorID(profile) != input.MentorID ||
 				dateString(profile.InternshipStartDate) != input.InternshipStartDate ||
 				employee.PositionID != positionID {
 				return ErrProfileAlreadyExists
@@ -127,14 +158,14 @@ func (s *Service) Register(ctx context.Context, employeeID string, input Registr
 }
 
 func registrationForm(tx *gorm.DB, employee models.Employee) (LoginResult, error) {
-	var teams []models.Team
+	var team models.Team
 	query := tx.Preload("Mentors", func(db *gorm.DB) *gorm.DB {
 		return db.Order("first_name, second_name, id")
-	}).Order("name, id")
-	if employee.Role == models.RoleIntern {
-		query = query.Where("EXISTS (SELECT 1 FROM mentors WHERE mentors.team_id = teams.id)")
-	}
-	if err := query.Find(&teams).Error; err != nil {
+	})
+	if err := query.Take(&team, "id = ?", employee.TeamID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return LoginResult{}, ErrRegistrationUnavailable
+		}
 		return LoginResult{}, fmt.Errorf("загрузить команды: %w", err)
 	}
 
@@ -142,31 +173,29 @@ func registrationForm(tx *gorm.DB, employee models.Employee) (LoginResult, error
 	if err := tx.Order("name, id").Find(&positions).Error; err != nil {
 		return LoginResult{}, fmt.Errorf("загрузить должности: %w", err)
 	}
-	if len(teams) == 0 || len(positions) == 0 {
+	if len(positions) == 0 || (employee.Role == models.RoleIntern && len(team.Mentors) == 0) {
 		return LoginResult{}, ErrRegistrationUnavailable
 	}
 
+	teamOption := &TeamOption{
+		Option:  Option{ID: team.ID, Name: team.Name},
+		Mentors: make([]MentorOption, 0, len(team.Mentors)),
+	}
+	for _, mentor := range team.Mentors {
+		teamOption.Mentors = append(teamOption.Mentors, MentorOption{
+			ID: mentor.ID, FirstName: mentor.FirstName, SecondName: mentor.SecondName,
+		})
+	}
 	result := LoginResult{
 		Status:          LoginNeedsRegistration,
 		EmployeeID:      employee.ID,
-		FullName:        employee.FirstName + " " + employee.SecondName,
+		FirstName:       employee.FirstName,
+		SecondName:      employee.SecondName,
 		Email:           employee.Email,
 		Role:            employee.Role,
 		PositionID:      employee.PositionID,
-		TeamOptions:     make([]TeamOption, 0, len(teams)),
+		Team:            teamOption,
 		PositionOptions: make([]Option, 0, len(positions)),
-	}
-	for _, team := range teams {
-		option := TeamOption{
-			Option:  Option{ID: team.ID, Name: team.Name},
-			Mentors: make([]MentorOption, 0, len(team.Mentors)),
-		}
-		for _, mentor := range team.Mentors {
-			option.Mentors = append(option.Mentors, MentorOption{
-				ID: mentor.ID, FullName: mentor.FirstName + " " + mentor.SecondName,
-			})
-		}
-		result.TeamOptions = append(result.TeamOptions, option)
 	}
 	for _, position := range positions {
 		result.PositionOptions = append(result.PositionOptions, Option{ID: position.ID, Name: position.Name})
@@ -181,22 +210,23 @@ func createProfile(tx *gorm.DB, employee models.Employee, input RegistrationInpu
 		return Profile{}, err
 	}
 	var team models.Team
-	if err := loadReference(tx, &team, "команда", "id = ?", input.TeamID); err != nil {
+	if err := loadReference(tx, &team, "назначенная команда", "id = ?", employee.TeamID); err != nil {
 		return Profile{}, err
 	}
 
 	profile := models.Profile{
 		ID:                  rand.Text(),
 		EmployeeID:          employee.ID,
-		TeamID:              team.ID,
 		InternshipStartDate: startDate,
 	}
+	var mentor *models.Mentor
 	if input.MentorID != "" {
-		var mentor models.Mentor
-		if err := loadReference(tx, &mentor, "наставник выбранной команды", "id = ? AND team_id = ?", input.MentorID, team.ID); err != nil {
+		var selected models.Mentor
+		if err := loadReference(tx, &selected, "наставник выбранной команды", "id = ? AND team_id = ?", input.MentorID, team.ID); err != nil {
 			return Profile{}, err
 		}
-		profile.MentorID = &mentor.ID
+		profile.MentorID = &selected.ID
+		mentor = &selected
 	}
 	if employee.PositionID != position.ID {
 		if err := tx.Model(&models.Employee{}).Where("id = ?", employee.ID).
@@ -208,7 +238,8 @@ func createProfile(tx *gorm.DB, employee models.Employee, input RegistrationInpu
 		return Profile{}, fmt.Errorf("создать профиль: %w", err)
 	}
 	employee.Position = position
-	profile.Team = team
+	employee.Team = team
+	profile.Mentor = mentor
 	return profileView(profile, employee), nil
 }
 
@@ -233,7 +264,7 @@ func registrationDate(role models.EmployeeRole, input RegistrationInput) (*time.
 		return &date, nil
 	case models.RoleManager:
 		if input.MentorID != "" || input.InternshipStartDate != "" {
-			return nil, fmt.Errorf("%w: для руководителя достаточно команды и должности", ErrInvalidInput)
+			return nil, fmt.Errorf("%w: для руководителя достаточно должности", ErrInvalidInput)
 		}
 		return nil, nil
 	default:
@@ -243,21 +274,30 @@ func registrationDate(role models.EmployeeRole, input RegistrationInput) (*time.
 
 func findProfile(tx *gorm.DB, employeeID string) (models.Profile, error) {
 	var profile models.Profile
-	err := tx.Preload("Team").Take(&profile, "employee_id = ?", employeeID).Error
+	err := tx.Preload("Mentor").Take(&profile, "employee_id = ?", employeeID).Error
 	return profile, err
 }
 
 func profileView(profile models.Profile, employee models.Employee) Profile {
-	return Profile{
+	view := Profile{
 		ID:                  profile.ID,
 		EmployeeID:          employee.ID,
-		FullName:            employee.FirstName + " " + employee.SecondName,
+		FirstName:           employee.FirstName,
+		SecondName:          employee.SecondName,
 		Email:               employee.Email,
 		Role:                employee.Role,
 		Position:            employee.Position.Name,
-		Team:                Option{ID: profile.Team.ID, Name: profile.Team.Name},
+		Team:                Option{ID: employee.Team.ID, Name: employee.Team.Name},
 		InternshipStartDate: dateString(profile.InternshipStartDate),
 	}
+	if profile.Mentor != nil {
+		view.Mentor = &MentorOption{
+			ID:         profile.Mentor.ID,
+			FirstName:  profile.Mentor.FirstName,
+			SecondName: profile.Mentor.SecondName,
+		}
+	}
+	return view
 }
 
 func mentorID(profile models.Profile) string {

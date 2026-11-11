@@ -18,6 +18,8 @@ type Employee struct {
 	SecondName string `gorm:"not null"`
 	PositionID string `gorm:"not null"`
 	Position   Position
+	TeamID     string `gorm:"not null"`
+	Team       Team
 	Role       EmployeeRole `gorm:"not null;check:employee_role_valid,role IN ('intern','manager')"`
 }
 
@@ -27,7 +29,7 @@ type Position struct {
 	Name string `gorm:"not null"`
 }
 
-// Team — команда из справочника. По ней форма регистрации подбирает наставников.
+// Team — назначенная сотруднику команда из справочника. По ней подбираются наставники.
 type Team struct {
 	ID      string `gorm:"primaryKey"`
 	Name    string `gorm:"not null"`
@@ -42,14 +44,12 @@ type Mentor struct {
 	SecondName string `gorm:"not null"`
 }
 
-// Profile — профиль сотрудника в приложении. Для стажёра хранит выбранную команду,
-// наставника и дату начала стажировки. Профиль руководителя создаётся заранее.
+// Profile — профиль сотрудника в приложении. Для стажёра хранит наставника
+// и дату начала стажировки. Команда и роль берутся из записи Employee.
 type Profile struct {
 	ID                  string `gorm:"primaryKey"`
 	EmployeeID          string `gorm:"not null;uniqueIndex"`
 	Employee            Employee
-	TeamID              string `gorm:"not null"`
-	Team                Team
 	MentorID            *string    // ID наставника в базе. nil, если наставника нет.
 	Mentor              *Mentor    // Данные наставника. nil, если запись не загружена или наставника нет.
 	InternshipStartDate *time.Time `gorm:"type:date"` // nil, если дата начала стажировки отсутствует.
