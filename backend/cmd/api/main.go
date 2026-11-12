@@ -49,7 +49,7 @@ func run() error {
 
 	migrationCtx, cancelMigration := context.WithTimeout(ctx, time.Minute)
 	err = conn.WithContext(migrationCtx).AutoMigrate(
-		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
+		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{}, &models.TeamIntroduction{},
 	)
 	cancelMigration()
 	if err != nil {
