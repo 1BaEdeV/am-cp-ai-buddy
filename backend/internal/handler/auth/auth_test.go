@@ -34,7 +34,7 @@ func (s authStub) Me(ctx context.Context, id string) (authservice.Profile, error
 }
 
 func newRouter(service authhandler.AuthService) http.Handler {
-	return handler.NewRouter(authhandler.NewAuthHandler(service))
+	return handler.NewRouter(authhandler.NewAuthHandler(service), nil)
 }
 
 func request(router http.Handler, method, path, body, employeeID string) *httptest.ResponseRecorder {

@@ -1,0 +1,30 @@
+teams:
+  - id: "team-search"
+    name: "Поиск"
+
+  - id: "team-web"
+    name: "Веб-интерфейсы"
+
+  - id: "team-trust"
+    name: "Доверие и безопасность"
+
+  - id: "team-quality"
+    name: "Качество продукта"
+
+  - id: "team-analytics"
+    name: "Продуктовая аналитика"
+
+  - id: "team-recommendations"
+    name: "Рекомендации"
+
+  - id: "team-ml-platform"
+    name: "ML-платформа"
+
+  - id: "team-infrastructure"
+    name: "Инфраструктура"
+
+  - id: "team-design"
+    name: "Продуктовый дизайн"
+
+  - id: "team-experiments"
+    name: "Платформа экспериментов"

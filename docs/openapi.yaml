@@ -312,6 +312,14 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+        '500':
+          description: Ошибка чтения данных или настройки обязательных доступов.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {code: internal_error, message: Не удалось загрузить рабочие доступы. Попробуй позже.}
+
   /onboarding/tasks/team-intro/complete:
     post:
       tags: [Onboarding]
@@ -1043,7 +1051,7 @@ components:
       required: [id, service, name, accessLevel, purpose, status, canRequest]
       properties:
         id: {type: string, example: gitlab-search-api}
-        service: {type: string, enum: [wiki, youtrack, gitlab, grafana], example: gitlab}
+        service: {type: string, enum: [wiki, youtrack, gitlab, grafana, figma, jupyterhub, s3, postgres, metabase], example: gitlab}
         name: {type: string, example: GitLab · search-api}
         accessLevel: {type: string, example: Developer}
         purpose: {type: string, example: Код и работа с ветками}

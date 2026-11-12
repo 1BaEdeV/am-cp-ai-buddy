@@ -1,0 +1,60 @@
+resources:
+  - id: "team-wiki"
+    name: "Вики адаптации"
+    service: "wiki"
+    external_id: "demo/onboarding"
+    access_levels: ["read"]
+
+  - id: "youtrack-search"
+    name: "YouTrack · учебный проект"
+    service: "youtrack"
+    external_id: "DEMO"
+    access_levels: ["member"]
+
+  - id: "gitlab-search-api"
+    name: "GitLab · search-api"
+    service: "gitlab"
+    external_id: "demo/search-api"
+    access_levels: ["Developer"]
+
+  - id: "grafana-search"
+    name: "Grafana · учебные дашборды"
+    service: "grafana"
+    external_id: "demo-onboarding"
+    access_levels: ["Viewer"]
+
+  - id: "figma-design"
+    name: "Figma · учебный проект"
+    service: "figma"
+    external_id: "demo-design"
+    access_levels: ["Viewer", "Editor"]
+
+  - id: "jupyter-training"
+    name: "JupyterHub · учебное окружение"
+    service: "jupyterhub"
+    external_id: "demo-training"
+    access_levels: ["user"]
+
+  - id: "s3-training"
+    name: "S3 · учебные данные"
+    service: "s3"
+    external_id: "demo-training-data"
+    access_levels: ["read", "read_write"]
+
+  - id: "postgres-training"
+    name: "PostgreSQL · учебная база"
+    service: "postgres"
+    external_id: "demo_training"
+    access_levels: ["read"]
+
+  - id: "metabase-training"
+    name: "Metabase · учебная аналитика"
+    service: "metabase"
+    external_id: "demo-analytics"
+    access_levels: ["Viewer"]
+
+  - id: "gitlab-onboarding"
+    name: "GitLab · onboarding-lab"
+    service: "gitlab"
+    external_id: "demo/onboarding-lab"
+    access_levels: ["Reporter", "Developer"]

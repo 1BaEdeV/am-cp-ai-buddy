@@ -11,10 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/access"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/config"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/db"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler"
+	accesshandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/access"
 	authhandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 )
@@ -50,16 +52,20 @@ func run() error {
 	migrationCtx, cancelMigration := context.WithTimeout(ctx, time.Minute)
 	err = conn.WithContext(migrationCtx).AutoMigrate(
 		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
+		&models.Resource{}, &models.AccessRequirement{}, &models.EmployeeAccess{},
 	)
 	cancelMigration()
 	if err != nil {
-		return fmt.Errorf("подготовить таблицы авторизации: %w", err)
+		return fmt.Errorf("подготовить таблицы приложения: %w", err)
 	}
-	slog.Info("таблицы авторизации готовы")
+	slog.Info("таблицы приложения готовы")
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           handler.NewRouter(authhandler.NewAuthHandler(auth.NewService(conn))),
+		Addr: cfg.HTTPAddr,
+		Handler: handler.NewRouter(
+			authhandler.NewAuthHandler(auth.NewService(conn)),
+			accesshandler.NewAccessHandler(access.NewService(conn)),
+		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
