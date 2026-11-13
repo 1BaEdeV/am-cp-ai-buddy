@@ -13,10 +13,14 @@ type OnboardingEndpoints interface {
 	GetPlan(http.ResponseWriter, *http.Request)
 	CompleteTeamIntro(http.ResponseWriter, *http.Request)
 }
+type ChatEndpoints interface {
+	GetTaskChat(http.ResponseWriter, *http.Request)
+}
 
 func NewRouter(
 	authHandler AuthEndpoints,
 	onboardingHandler OnboardingEndpoints,
+	chatHandler ChatEndpoints,
 ) http.Handler {
 	mux := http.NewServeMux()
 
@@ -32,6 +36,10 @@ func NewRouter(
 	mux.HandleFunc(
 		"POST /api/v1/onboarding/tasks/team-intro/complete",
 		onboardingHandler.CompleteTeamIntro,
+	)
+	mux.HandleFunc(
+		"GET /api/v1/onboarding/tasks/{taskId}/chat",
+		chatHandler.GetTaskChat,
 	)
 
 	return mux

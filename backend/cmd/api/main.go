@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat"
+    chathandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/chat"
 	"os/signal"
 	"syscall"
 	"time"
@@ -51,7 +53,8 @@ func run() error {
 
 	migrationCtx, cancelMigration := context.WithTimeout(ctx, time.Minute)
 	err = conn.WithContext(migrationCtx).AutoMigrate(
-		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{}, &models.TeamIntroduction{},
+		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{}, &models.TeamIntroduction{},&models.ChatMessage{},
+		&models.ChatRun{},
 	)
 	cancelMigration()
 	if err != nil {
@@ -64,6 +67,7 @@ func run() error {
 		Handler: handler.NewRouter(
 			authhandler.NewAuthHandler(auth.NewService(conn)),
 			onboardinghandler.NewOnboardingHandler(onboarding.NewService(conn)),
+			chathandler.NewChatHandler(chat.NewService(conn)),
 		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
