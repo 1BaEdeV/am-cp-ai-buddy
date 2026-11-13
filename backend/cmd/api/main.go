@@ -17,6 +17,8 @@ import (
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler"
 	authhandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/onboarding"
+	onboardinghandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/onboarding"
 )
 
 func main() {
@@ -58,8 +60,11 @@ func run() error {
 	slog.Info("таблицы авторизации готовы")
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           handler.NewRouter(authhandler.NewAuthHandler(auth.NewService(conn))),
+		Addr:    cfg.HTTPAddr,
+		Handler: handler.NewRouter(
+			authhandler.NewAuthHandler(auth.NewService(conn)),
+			onboardinghandler.NewOnboardingHandler(onboarding.NewService(conn)),
+		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
