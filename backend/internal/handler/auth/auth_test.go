@@ -34,8 +34,15 @@ func (s authStub) Me(ctx context.Context, id string) (authservice.Profile, error
 }
 
 func newRouter(service authhandler.AuthService) http.Handler {
-	return handler.NewRouter(authhandler.NewAuthHandler(service))
+	return handler.NewRouter(
+		authhandler.NewAuthHandler(service),
+		onboardingStub{},
+	)
 }
+
+type onboardingStub struct{}
+
+func (onboardingStub) GetTeamIntro(http.ResponseWriter, *http.Request) {}
 
 func request(router http.Handler, method, path, body, employeeID string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
