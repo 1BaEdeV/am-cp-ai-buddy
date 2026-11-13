@@ -1,13 +1,13 @@
-backend:
-  version: '2'
-  linters:
-    default: none
-    enable:
-      - govet 
-      - staticcheck 
-      - errcheck 
-      - unused 
-      - ineffassign 
-      - bodyclose 
-      - errorlint 
-      - nilerr 
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - unused
+    - ineffassign
+    - bodyclose
+    - errorlint
+    - nilerr
