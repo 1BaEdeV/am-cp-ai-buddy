@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Service подбирает обязательные ресурсы по команде и должности стажёра.
+// Service подбирает обязательные ресурсы и рассчитывает прогресс получения доступов.
 type Service struct {
 	db *gorm.DB
 }
@@ -65,9 +65,7 @@ func (s *Service) ListRequiredAccesses(ctx context.Context, employeeID string) (
 
 		resourceIDs := make([]string, 0, len(requirements))
 		for _, requirement := range requirements {
-			if requirement.Resource.ID == "" || requirement.AccessLevel == "" ||
-				!slices.Contains(requirement.Resource.AccessLevels, requirement.AccessLevel) ||
-				requirement.Approver.Role != models.RoleManager || requirement.Approver.TeamID != employee.TeamID {
+			if !ValidRequirement(requirement, employee.TeamID) {
 				return fmt.Errorf("правило %s: %w", requirement.ID, ErrInvalidRequirement)
 			}
 			resourceIDs = append(resourceIDs, requirement.ResourceID)
@@ -81,6 +79,15 @@ func (s *Service) ListRequiredAccesses(ctx context.Context, employeeID string) (
 		accessByResource := make(map[string]models.EmployeeAccess, len(accesses))
 		for _, access := range accesses {
 			accessByResource[access.ResourceID] = access
+		}
+		var requests []models.AccessRequest
+		if err := tx.Where("employee_id = ? AND resource_id IN ? AND status IN ?", employee.ID, resourceIDs, ActiveRequestStatuses()).
+			Find(&requests).Error; err != nil {
+			return fmt.Errorf("загрузить активные заявки для карточки: %w", err)
+		}
+		requestByResource := make(map[string]models.AccessRequest, len(requests))
+		for _, request := range requests {
+			requestByResource[request.ResourceID] = request
 		}
 
 		result.Resources = make([]RequiredResource, 0, len(requirements))
@@ -97,10 +104,19 @@ func (s *Service) ListRequiredAccesses(ctx context.Context, employeeID string) (
 			}
 			access, found := accessByResource[requirement.ResourceID]
 			if found && !access.VerifiedAt.IsZero() &&
-				hasRequiredLevel(resource.Service, access.AccessLevel, requirement.AccessLevel) {
+				HasRequiredLevel(resource.Service, access.AccessLevel, requirement.AccessLevel) {
 				resource.Status = StatusGranted
 				resource.CanRequest = false
 				result.Progress.Completed++
+			} else if request, found := requestByResource[requirement.ResourceID]; found {
+				resource.Status = ResourceStatus(request.Status)
+				resource.CanRequest = false
+				resource.Request = &RequestSummary{ID: request.ID, Number: request.Number, Status: request.Status}
+				if request.Status == models.AccessRequestFailed {
+					result.Progress.Failed++
+				} else {
+					result.Progress.InProgress++
+				}
 			}
 			result.Resources = append(result.Resources, resource)
 		}
@@ -112,8 +128,9 @@ func (s *Service) ListRequiredAccesses(ctx context.Context, employeeID string) (
 	return result, nil
 }
 
-// hasRequiredLevel учитывает одинаковые уровни и включение прав в тестовых сервисах MVP.
-func hasRequiredLevel(service, actual, required string) bool {
+// HasRequiredLevel учитывает одинаковые уровни и включение прав в тестовых сервисах MVP.
+// Используется карточкой ресурсов и сервисом заявок.
+func HasRequiredLevel(service, actual, required string) bool {
 	if actual == required {
 		return true
 	}
@@ -127,4 +144,12 @@ func hasRequiredLevel(service, actual, required string) bool {
 	default:
 		return false
 	}
+}
+
+// ValidRequirement проверяет параметры ресурса и назначение согласующего команде.
+func ValidRequirement(r models.AccessRequirement, teamID string) bool {
+	return r.Resource.ID != "" && strings.TrimSpace(r.Resource.Name) != "" &&
+		strings.TrimSpace(r.Resource.Service) != "" && strings.TrimSpace(r.Resource.ExternalID) != "" &&
+		r.AccessLevel != "" && slices.Contains(r.Resource.AccessLevels, r.AccessLevel) &&
+		strings.TrimSpace(r.Purpose) != "" && r.Approver.Role == models.RoleManager && r.Approver.TeamID == teamID
 }

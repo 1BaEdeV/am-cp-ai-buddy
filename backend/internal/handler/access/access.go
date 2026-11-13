@@ -54,7 +54,7 @@ func (h *AccessHandler) GetWorkingAccesses(w http.ResponseWriter, r *http.Reques
 	status := "not_started"
 	if accesses.Progress.Total > 0 && accesses.Progress.Completed == accesses.Progress.Total {
 		status = "completed"
-	} else if accesses.Progress.Completed > 0 {
+	} else if accesses.Progress.Completed > 0 || accesses.Progress.InProgress > 0 || accesses.Progress.Failed > 0 {
 		status = "in_progress"
 	}
 	handler.WriteJSON(w, http.StatusOK, WorkingAccessesTask{

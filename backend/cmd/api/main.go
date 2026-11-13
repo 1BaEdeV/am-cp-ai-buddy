@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/access"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/accessrequest"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/config"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/db"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler"
 	accesshandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/access"
+	requesthandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/accessrequest"
 	authhandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 )
@@ -53,6 +55,7 @@ func run() error {
 	err = conn.WithContext(migrationCtx).AutoMigrate(
 		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
 		&models.Resource{}, &models.AccessRequirement{}, &models.EmployeeAccess{},
+		&models.AccessDraft{}, &models.AccessRequest{}, &models.AccessIssuanceJob{},
 	)
 	cancelMigration()
 	if err != nil {
@@ -65,6 +68,7 @@ func run() error {
 		Handler: handler.NewRouter(
 			authhandler.NewAuthHandler(auth.NewService(conn)),
 			accesshandler.NewAccessHandler(access.NewService(conn)),
+			requesthandler.NewRequestHandler(accessrequest.NewService(conn)),
 		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,

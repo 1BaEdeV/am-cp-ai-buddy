@@ -26,17 +26,21 @@ func (s accessStub) ListRequiredAccesses(ctx context.Context, employeeID string)
 }
 
 func newRouter(service accesshandler.AccessService) http.Handler {
-	return handler.NewRouter(authhandler.NewAuthHandler(nil), accesshandler.NewAccessHandler(service))
+	return handler.NewRouter(authhandler.NewAuthHandler(nil), accesshandler.NewAccessHandler(service), nil)
 }
 
 func TestWorkingAccessesTask(t *testing.T) {
 	for _, tc := range []struct {
-		completed int
-		status    string
+		completed  int
+		inProgress int
+		failed     int
+		status     string
 	}{
 		{completed: 0, status: "not_started"},
 		{completed: 2, status: "in_progress"},
 		{completed: 4, status: "completed"},
+		{inProgress: 1, status: "in_progress"},
+		{failed: 1, status: "in_progress"},
 	} {
 		t.Run(tc.status, func(t *testing.T) {
 			accesses := accessservice.WorkingAccesses{
@@ -44,7 +48,7 @@ func TestWorkingAccessesTask(t *testing.T) {
 					ID: "gitlab", Service: "gitlab", Name: "GitLab", AccessLevel: "Developer",
 					Purpose: "Работа с кодом", Status: accessservice.StatusRequestable, CanRequest: true,
 				}},
-				Progress: accessservice.Progress{Completed: tc.completed, Total: 4},
+				Progress: accessservice.Progress{Completed: tc.completed, Total: 4, InProgress: tc.inProgress, Failed: tc.failed},
 			}
 			request := httptest.NewRequest(http.MethodGet, taskPath, nil)
 			request.Header.Set("X-Demo-Employee-Id", " intern-alina ")

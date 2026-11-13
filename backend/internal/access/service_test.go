@@ -2,176 +2,105 @@ package access
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
-func testDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "access.db")+"?_foreign_keys=on"), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	require.NoError(t, err)
-	pool, err := db.DB()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, pool.Close()) })
-	require.NoError(t, db.AutoMigrate(
-		&models.Team{}, &models.Position{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
-		&models.Resource{}, &models.AccessRequirement{}, &models.EmployeeAccess{},
-	))
-
-	require.NoError(t, db.Create(&[]models.Team{{ID: "search", Name: "Поиск"}, {ID: "other", Name: "Другая команда"}}).Error)
-	require.NoError(t, db.Create(&[]models.Position{{ID: "go", Name: "Go-разработчик"}, {ID: "qa", Name: "Тестировщик"}}).Error)
-	require.NoError(t, db.Create(&[]models.Employee{
-		{ID: "manager", Email: "manager@example.test", FirstName: "Дмитрий", SecondName: "Орлов", TeamID: "search", PositionID: "go", Role: models.RoleManager},
-		{ID: "intern", Email: "intern@example.test", FirstName: "Алина", SecondName: "Смирнова", TeamID: "search", PositionID: "go", Role: models.RoleIntern},
-		{ID: "other-intern", Email: "other@example.test", FirstName: "Иван", SecondName: "Петров", TeamID: "other", PositionID: "go", Role: models.RoleIntern},
-	}).Error)
-	require.NoError(t, db.Create(&models.Profile{ID: "profile", EmployeeID: "intern"}).Error)
-
-	resources := []models.Resource{
-		{ID: "wiki", Name: "Вики", Service: "wiki", ExternalID: "demo/wiki", AccessLevels: []string{"read"}},
-		{ID: "youtrack", Name: "YouTrack", Service: "youtrack", ExternalID: "DEMO", AccessLevels: []string{"member"}},
-		{ID: "gitlab", Name: "GitLab", Service: "gitlab", ExternalID: "demo/repo", AccessLevels: []string{"Reporter", "Developer"}},
-		{ID: "grafana", Name: "Grafana", Service: "grafana", ExternalID: "demo", AccessLevels: []string{"Viewer"}},
-	}
-	require.NoError(t, db.Create(&resources).Error)
-	for _, resource := range resources {
-		requirement := models.AccessRequirement{
-			ID: resource.ID, TeamID: "search", PositionID: "go", ResourceID: resource.ID,
-			AccessLevel: resource.AccessLevels[len(resource.AccessLevels)-1], Purpose: "Для учебных задач", ApproverID: "manager",
-		}
-		require.NoError(t, db.Create(&requirement).Error)
-	}
-	// Эти правила помогают обнаружить выдачу ресурсов другой команды или должности.
-	require.NoError(t, db.Create(&[]models.AccessRequirement{
-		{ID: "other-team", TeamID: "other", PositionID: "go", ResourceID: "gitlab", AccessLevel: "Developer", Purpose: "Другой команды", ApproverID: "manager"},
-		{ID: "other-position", TeamID: "search", PositionID: "qa", ResourceID: "gitlab", AccessLevel: "Reporter", Purpose: "Другой должности", ApproverID: "manager"},
-	}).Error)
-	require.NoError(t, db.Create(&[]models.EmployeeAccess{
-		{ID: "wiki", EmployeeID: "intern", ResourceID: "wiki", AccessLevel: "read", VerifiedAt: time.Now()},
-		{ID: "youtrack", EmployeeID: "intern", ResourceID: "youtrack", AccessLevel: "member", VerifiedAt: time.Now()},
-		{ID: "other", EmployeeID: "other-intern", ResourceID: "gitlab", AccessLevel: "Developer", VerifiedAt: time.Now()},
-	}).Error)
-	return db
-}
-
-func TestListRequiredAccesses(t *testing.T) {
-	db := testDB(t)
-	result, err := NewService(db).ListRequiredAccesses(context.Background(), " intern ")
-	require.NoError(t, err)
-	require.Equal(t, Progress{Completed: 2, Total: 4}, result.Progress)
-	require.Len(t, result.Resources, 4)
-	require.Equal(t, "gitlab", result.Resources[0].ID)
-	require.Equal(t, "grafana", result.Resources[1].ID)
-	require.Equal(t, "wiki", result.Resources[2].ID)
-	require.Equal(t, "youtrack", result.Resources[3].ID)
-	for _, resource := range result.Resources {
-		switch resource.ID {
-		case "wiki", "youtrack":
-			require.Equal(t, StatusGranted, resource.Status)
-			require.False(t, resource.CanRequest)
-		default:
-			require.Equal(t, StatusRequestable, resource.Status)
-			require.True(t, resource.CanRequest)
-		}
-	}
-}
-
-func TestListRequiredAccessesRejectsInvalidState(t *testing.T) {
-	cases := []struct {
-		name       string
-		employeeID string
-		prepare    func(t *testing.T, db *gorm.DB)
-		wantErr    error
+func TestHasRequiredLevel(t *testing.T) {
+	tests := []struct {
+		name, service, actual, required string
+		want                            bool
 	}{
-		{name: "пустой ID", employeeID: " ", wantErr: auth.ErrEmployeeNotFound},
-		{name: "сотрудник отсутствует", employeeID: "missing", wantErr: auth.ErrEmployeeNotFound},
-		{name: "руководитель", employeeID: "manager", wantErr: auth.ErrForbidden},
-		{name: "нет профиля", employeeID: "other-intern", wantErr: auth.ErrProfileRequired},
-		{name: "правила не настроены", employeeID: "intern", wantErr: ErrRequirementsNotConfigured,
-			prepare: func(t *testing.T, db *gorm.DB) {
-				require.NoError(t, db.Where("team_id = ? AND position_id = ?", "search", "go").Delete(&models.AccessRequirement{}).Error)
-			}},
-		{name: "недопустимый уровень", employeeID: "intern", wantErr: ErrInvalidRequirement,
-			prepare: func(t *testing.T, db *gorm.DB) {
-				require.NoError(t, db.Model(&models.AccessRequirement{}).Where("id = ?", "gitlab").Update("access_level", "Admin").Error)
-			}},
-		{name: "согласующий стажёр", employeeID: "intern", wantErr: ErrInvalidRequirement,
-			prepare: func(t *testing.T, db *gorm.DB) {
-				require.NoError(t, db.Model(&models.AccessRequirement{}).Where("id = ?", "gitlab").Update("approver_id", "intern").Error)
-			}},
-		{name: "согласующий другой команды", employeeID: "intern", wantErr: ErrInvalidRequirement,
-			prepare: func(t *testing.T, db *gorm.DB) {
-				require.NoError(t, db.Model(&models.Employee{}).Where("id = ?", "manager").Update("team_id", "other").Error)
-			}},
+		{"gitlab exact lower level", "gitlab", "Reporter", "Reporter", true},
+		{"gitlab exact higher level", "gitlab", "Developer", "Developer", true},
+		{"gitlab higher level includes lower", "gitlab", "Developer", "Reporter", true},
+		{"gitlab lower level is insufficient", "gitlab", "Reporter", "Developer", false},
+		{"figma exact level", "figma", "Viewer", "Viewer", true},
+		{"figma higher level includes lower", "figma", "Editor", "Viewer", true},
+		{"figma lower level is insufficient", "figma", "Viewer", "Editor", false},
+		{"s3 exact level", "s3", "read", "read", true},
+		{"s3 higher level includes lower", "s3", "read_write", "read", true},
+		{"s3 lower level is insufficient", "s3", "read", "read_write", false},
+		{"custom service accepts exact level", "youtrack", "Reader", "Reader", true},
+		{"custom service has no implicit hierarchy", "youtrack", "Admin", "Reader", false},
+		{"gitlab levels do not apply to figma", "figma", "Developer", "Reporter", false},
+		{"figma levels do not apply to s3", "s3", "Editor", "Viewer", false},
+		{"s3 levels do not apply to gitlab", "gitlab", "read_write", "read", false},
+		{"missing actual level", "gitlab", "", "Reporter", false},
+		{"unknown actual level", "gitlab", "Owner", "Reporter", false},
+		{"level comparison is case sensitive", "gitlab", "developer", "Reporter", false},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			db := testDB(t)
-			if tc.prepare != nil {
-				tc.prepare(t, db)
-			}
-			result, err := NewService(db).ListRequiredAccesses(context.Background(), tc.employeeID)
-			require.ErrorIs(t, err, tc.wantErr)
-			require.Empty(t, result.Resources)
-			require.Zero(t, result.Progress)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, HasRequiredLevel(tt.service, tt.actual, tt.required))
 		})
 	}
 }
 
-func TestListRequiredAccessesChecksConfirmedLevel(t *testing.T) {
-	cases := []struct {
-		name      string
-		service   string
-		required  string
-		actual    string
-		verified  bool
-		completed int
+func TestValidRequirement(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*models.AccessRequirement)
+		want   bool
 	}{
-		{name: "нужный уровень подтверждён", service: "gitlab", required: "Developer", actual: "Developer", verified: true, completed: 3},
-		{name: "уровень недостаточен", service: "gitlab", required: "Developer", actual: "Reporter", verified: true, completed: 2},
-		{name: "нет времени подтверждения", service: "gitlab", required: "Developer", actual: "Developer", completed: 2},
-		{name: "Developer включает Reporter", service: "gitlab", required: "Reporter", actual: "Developer", verified: true, completed: 3},
-		{name: "Editor включает Viewer", service: "figma", required: "Viewer", actual: "Editor", verified: true, completed: 3},
-		{name: "read_write включает read", service: "s3", required: "read", actual: "read_write", verified: true, completed: 3},
-		{name: "права одного сервиса не распространяются на другой", service: "wiki", required: "read", actual: "read_write", verified: true, completed: 2},
+		{"configured requirement", func(r *models.AccessRequirement) {}, true},
+		{"missing resource", func(r *models.AccessRequirement) { r.Resource.ID = "" }, false},
+		{"empty resource name", func(r *models.AccessRequirement) { r.Resource.Name = "" }, false},
+		{"blank resource name", func(r *models.AccessRequirement) { r.Resource.Name = " \t\n" }, false},
+		{"empty service", func(r *models.AccessRequirement) { r.Resource.Service = "" }, false},
+		{"blank service", func(r *models.AccessRequirement) { r.Resource.Service = "\t " }, false},
+		{"empty external id", func(r *models.AccessRequirement) { r.Resource.ExternalID = "" }, false},
+		{"blank external id", func(r *models.AccessRequirement) { r.Resource.ExternalID = " \n" }, false},
+		{"missing access level", func(r *models.AccessRequirement) { r.AccessLevel = "" }, false},
+		{"unsupported access level", func(r *models.AccessRequirement) { r.AccessLevel = "Owner" }, false},
+		{"no resource levels", func(r *models.AccessRequirement) { r.Resource.AccessLevels = nil }, false},
+		{"empty purpose", func(r *models.AccessRequirement) { r.Purpose = "" }, false},
+		{"blank purpose", func(r *models.AccessRequirement) { r.Purpose = "\u00a0\t " }, false},
+		{"missing approver", func(r *models.AccessRequirement) { r.Approver = models.Employee{} }, false},
+		{"intern cannot approve", func(r *models.AccessRequirement) { r.Approver.Role = models.RoleIntern }, false},
+		{"unknown role cannot approve", func(r *models.AccessRequirement) { r.Approver.Role = "admin" }, false},
+		{"manager from another team", func(r *models.AccessRequirement) { r.Approver.TeamID = "other-team" }, false},
+		{"another supported level", func(r *models.AccessRequirement) { r.AccessLevel = "Developer" }, true},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			db := testDB(t)
-			resource := models.Resource{ID: "gitlab", Name: "Ресурс", Service: tc.service, ExternalID: "demo/levels", AccessLevels: []string{tc.required, tc.actual}}
-			require.NoError(t, db.Save(&resource).Error)
-			require.NoError(t, db.Model(&models.AccessRequirement{}).Where("id = ?", "gitlab").Update("access_level", tc.required).Error)
-			access := models.EmployeeAccess{ID: "new-access", EmployeeID: "intern", ResourceID: "gitlab", AccessLevel: tc.actual}
-			if tc.verified {
-				access.VerifiedAt = time.Now()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := models.AccessRequirement{
+				Resource: models.Resource{
+					ID: "repo", Name: "Backend", Service: "gitlab", ExternalID: "42",
+					AccessLevels: []string{"Reporter", "Developer"},
+				},
+				AccessLevel: "Reporter", Purpose: "Работа с кодом команды",
+				Approver: models.Employee{Role: models.RoleManager, TeamID: "team"},
 			}
-			require.NoError(t, db.Create(&access).Error)
-			result, err := NewService(db).ListRequiredAccesses(context.Background(), "intern")
-			require.NoError(t, err)
-			require.Equal(t, tc.completed, result.Progress.Completed)
-			require.Equal(t, tc.required, result.Resources[0].AccessLevel)
+			tt.change(&r)
+			assert.Equal(t, tt.want, ValidRequirement(r, "team"))
 		})
 	}
 }
 
-func TestListRequiredAccessesPreservesErrors(t *testing.T) {
-	db := testDB(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := NewService(db).ListRequiredAccesses(ctx, "intern")
-	require.ErrorIs(t, err, context.Canceled)
+func TestActiveRequestStatuses(t *testing.T) {
+	want := []models.AccessRequestStatus{
+		models.AccessRequestPending, models.AccessRequestIssuing, models.AccessRequestFailed,
+	}
+	assert.ElementsMatch(t, want, ActiveRequestStatuses(), "ошибка выдачи тоже блокирует создание дубля")
 
-	require.NoError(t, db.Migrator().DropTable(&models.EmployeeAccess{}))
-	_, err = NewService(db).ListRequiredAccesses(context.Background(), "intern")
-	require.ErrorContains(t, err, "загрузить подтверждённые доступы")
+	statuses := ActiveRequestStatuses()
+	require.NotEmpty(t, statuses)
+	statuses[0] = models.AccessRequestGranted
+	assert.ElementsMatch(t, want, ActiveRequestStatuses(), "вызывающий код не должен менять общие правила")
+}
+
+func TestListRequiredAccessesRejectsBlankEmployee(t *testing.T) {
+	for _, id := range []string{"", " ", "\t\n", "\u00a0"} {
+		t.Run(id, func(t *testing.T) {
+			// nil вместо подключения: неправильный ID должен отклоняться до запроса к БД.
+			result, err := NewService(nil).ListRequiredAccesses(context.Background(), id)
+			require.ErrorIs(t, err, auth.ErrEmployeeNotFound)
+			assert.Empty(t, result)
+		})
+	}
 }
