@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+	"gorm.io/gorm/clause"
 
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	"gorm.io/gorm"
@@ -130,4 +132,47 @@ func (s *Service) loadTeamIntroPeople(
 
 func fullName(firstName, secondName string) string {
 	return strings.TrimSpace(firstName + " " + secondName)
+}
+
+func (s *Service) CompleteTeamIntro(ctx context.Context, employeeID string) error {
+	var intern models.Employee
+
+	err := s.db.WithContext(ctx).
+		Take(&intern, "id = ?", employeeID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrInternNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("найти стажёра: %w", err)
+	}
+	if intern.Role != models.RoleIntern {
+		return ErrForbidden
+	}
+
+	var profile models.Profile
+	err = s.db.WithContext(ctx).
+		Take(&profile, "employee_id = ?", intern.ID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrProfileNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("найти профиль стажёра: %w", err)
+	}
+
+	completion := models.TeamIntroduction{
+		EmployeeID:  intern.ID,
+		CompletedAt: time.Now().UTC(),
+	}
+
+	err = s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "employee_id"}},
+			DoNothing: true,
+		}).
+		Create(&completion).Error
+	if err != nil {
+		return fmt.Errorf("сохранить отметку знакомства: %w", err)
+	}
+
+	return nil
 }

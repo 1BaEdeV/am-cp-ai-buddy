@@ -42,6 +42,7 @@ func newRouter(service authhandler.AuthService) http.Handler {
 
 type onboardingStub struct{}
 
+func (onboardingStub) GetPlan(http.ResponseWriter, *http.Request)      {}
 func (onboardingStub) GetTeamIntro(http.ResponseWriter, *http.Request) {}
 
 func request(router http.Handler, method, path, body, employeeID string) *httptest.ResponseRecorder {
