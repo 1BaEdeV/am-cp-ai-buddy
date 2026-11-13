@@ -1,0 +1,55 @@
+profiles:
+  - id: "profile-manager-dmitry"
+    employee_id: "manager-dmitry"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-anna"
+    employee_id: "manager-anna"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-maxim"
+    employee_id: "manager-maxim"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-olga"
+    employee_id: "manager-olga"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-sergey"
+    employee_id: "manager-sergey"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-natalia"
+    employee_id: "manager-natalia"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-roman"
+    employee_id: "manager-roman"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-viktor"
+    employee_id: "manager-viktor"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-ekaterina"
+    employee_id: "manager-ekaterina"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-manager-mikhail"
+    employee_id: "manager-mikhail"
+    mentor_id: null
+    internship_start_date: null
+
+  - id: "profile-intern-alina"
+    employee_id: "intern-alina"
+    mentor_id: "mentor-katya"
+    internship_start_date: "2026-11-10"

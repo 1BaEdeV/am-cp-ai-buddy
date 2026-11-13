@@ -266,7 +266,7 @@ paths:
                     description: Проверь доступы к ресурсам команды.
                     chatEnabled: true
                     workingAccesses:
-                      progress: {completed: 2, total: 4}
+                      progress: {completed: 2, total: 4, inProgress: 0, failed: 0}
                       resources:
                         - id: team-wiki
                           service: wiki
@@ -282,7 +282,6 @@ paths:
                           purpose: Работа с задачами команды
                           status: granted
                           canRequest: false
-                          requestId: request-1041
                         - id: gitlab-search-api
                           service: gitlab
                           name: GitLab · search-api
@@ -311,6 +310,14 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+        '500':
+          description: Ошибка чтения данных или настройки обязательных доступов.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {code: internal_error, message: Не удалось загрузить рабочие доступы. Попробуй позже.}
 
   /onboarding/tasks/team-intro/complete:
     post:
@@ -430,153 +437,124 @@ paths:
                 keyReused:
                   value: {code: idempotency_key_reused, message: Для нового сообщения нужен новый ключ.}
 
-  /access-requests/drafts:
-    post:
-      tags: [AccessRequests]
-      operationId: createAccessDraft
-      summary: Подготовить черновик заявки на один или несколько ресурсов
-      description: |
-        Доступно стажёру. Для кнопки «Запросить недостающие» используется all_missing.
-        Для запроса конкретного ресурса используется selected с его идентификатором.
-        Уровни доступа, основания и согласующие определяются на сервере.
-        В skipped возвращаются причины по ресурсам, которые сейчас нельзя добавить в черновик.
-        Для действующей заявки возвращаются её номер, идентификатор и статус.
-        Отправка заявок выполняется после отдельного подтверждения.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AccessSelection'
-            examples:
-              allMissing:
-                summary: Запросить недостающие
-                value: {mode: all_missing}
-              oneResource:
-                summary: Запросить доступ к GitLab
-                value: {mode: selected, resourceIds: [gitlab-search-api]}
-      responses:
-        '201':
-          description: Черновик для окна «Подтверди отправку».
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessDraft'
-              example:
-                id: draft-1
-                items:
-                  - resourceId: gitlab-search-api
-                    name: GitLab · search-api
-                    accessLevel: Developer
-                    purpose: Код и работа с ветками
-                    approverName: Дмитрий Орлов
-                  - resourceId: grafana-search
-                    name: Grafana · Поиск
-                    accessLevel: Чтение
-                    purpose: Дашборды тестового окружения
-                    approverName: Дмитрий Орлов
-                skipped:
-                  - {resourceId: team-wiki, reason: already_granted}
-                  - {resourceId: youtrack-search, reason: already_granted}
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: Среди выбранных ресурсов сейчас нет доступов, которые можно запросить.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NoRequestableResources'
-              example:
-                code: no_requestable_resources
-                message: По этому ресурсу уже есть заявка.
-                skipped:
-                  - resourceId: gitlab-search-api
-                    reason: already_requested
-                    requestId: request-1042
-                    requestNumber: 1042
-                    requestStatus: pending
-
   /access-requests/drafts/{draftId}/confirm:
     parameters:
       - $ref: '#/components/parameters/DraftId'
     post:
       tags: [AccessRequests]
       operationId: confirmAccessDraft
-      summary: Подтвердить отправку заявок из черновика
+      summary: Подтвердить черновик одного доступа
       description: |
-        Доступно стажёру, которому принадлежит черновик. Backend повторно проверяет права и ресурсы.
-        По каждому доступному к запросу ресурсу создаётся отдельная заявка pending.
-        Если активная заявка уже появилась, возвращаются её идентификатор, номер и статус.
-        Новые заявки и результат подтверждения сохраняются атомарно. Повтор того же черновика
-        возвращает сохранённый результат, а карточка заявки показывает актуальный статус.
-        Если изменились параметры, которые требуют нового согласия, весь пакет возвращает 409.
+        Вызывается действием сотрудника в интерфейсе чата после показа параметров.
+        Черновик готовится только серверным инструментом агента prepare_access_request;
+        публичного маршрута подготовки или произвольного создания заявки нет.
+        Владельца определяет X-Demo-Employee-Id, остальные параметры берутся из черновика.
+        Backend повторно проверяет условия и атомарно создаёт одну заявку pending.
+        Повтор возвращает ту же заявку в её актуальном состоянии, даже после истечения
+        срока черновика. Метод не регистрируется как автономный инструмент LLM.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessConfirmation'
+            example: {confirmed: true}
       responses:
-        '200':
-          description: Результат отправки по каждому ресурсу.
+        '201':
+          description: Создана одна заявка на согласование.
+          headers:
+            Location:
+              description: Относительный адрес карточки созданной заявки.
+              schema: {type: string, example: /api/v1/access-requests/request-1}
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AccessSubmission'
-              example:
-                draftId: draft-1
-                items:
-                  - {resourceId: gitlab-search-api, outcome: already_requested, requestId: request-1042, requestNumber: 1042, requestStatus: issuing}
-                  - {resourceId: grafana-search, outcome: created, requestId: request-1043, requestNumber: 1043, requestStatus: pending}
+                $ref: '#/components/schemas/AccessRequest'
+        '200':
+          description: Повтор подтверждения; возвращается ранее созданная заявка.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRequest'
+        '400':
+          description: Неверный JSON или отсутствует явное confirmed=true.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                confirmationRequired:
+                  value: {code: confirmation_required, message: Подтверди отправку выбранного черновика.}
+                invalidInput:
+                  value: {code: invalid_input, message: Проверь параметры запроса.}
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/AccessDraftNotFound'
         '409':
-          description: Пакет отклонён целиком из-за изменения условий. Стажёру нужен новый черновик.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example: {code: draft_outdated, message: Подготовь новый черновик и проверь параметры.}
+          $ref: '#/components/responses/AccessConflict'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /access-requests:
     get:
       tags: [AccessRequests]
       operationId: listAccessRequests
-      summary: Получить заявки текущего пользователя
+      summary: Получить свои заявки или очередь согласования
       description: |
-        Стажёр получает свои заявки. Руководитель получает заявки, назначенные ему на согласование.
-        Фильтр меняет items. Сводка summary считается по всем заявкам в пределах прав пользователя.
+        Стажёр получает свои заявки с фильтрами. Руководитель получает только
+        назначенные ему pending; group, status и resourceId для него игнорируются.
+        limit и offset работают для обеих ролей. Заявки отсортированы от новых к старым.
+        total — размер списка до пагинации; counts — счётчики до применения фильтров.
+        Для руководителя counts учитывает только очередь pending.
+        Неизвестные и повторяющиеся query-параметры возвращают 400.
       parameters:
         - name: group
           in: query
-          description: |
-            Фильтр интерфейса. in_progress включает pending и issuing.
-            processed включает granted, rejected и provisioning_failed.
+          description: Для стажёра active включает pending, issuing, failed; completed — granted и rejected.
+          schema: {type: string, enum: [all, active, completed], default: all}
+        - name: status
+          in: query
+          description: Дополнительный фильтр стажёра; действует совместно с group.
           schema:
-            type: string
-            enum: [all, in_progress, processed]
-            default: all
+            $ref: '#/components/schemas/AccessRequestStatus'
+        - name: resourceId
+          in: query
+          description: Фильтр стажёра по ID ресурса.
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
       responses:
         '200':
-          description: Список от новых заявок к старым и сводка для счётчиков.
+          description: Страница заявок и счётчики, прочитанные из одного снимка БД.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessRequestList'
-              examples:
-                noProcessedRequests:
-                  summary: Фильтр processed, все заявки ещё на согласовании
-                  value:
-                    items: []
-                    summary: {pending: 2, inProgress: 2, processed: 0}
+              example:
+                items: []
+                total: 0
+                counts: {total: 0, active: 0, completed: 0, pending: 0, issuing: 0, granted: 0, rejected: 0, failed: 0}
+                limit: 20
+                offset: 0
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /access-requests/{requestId}:
     parameters:
@@ -586,35 +564,25 @@ paths:
       operationId: getAccessRequest
       summary: Открыть карточку заявки
       description: |
-        Доступно стажёру-владельцу и назначенному согласующему.
-        Пока статус issuing, фронтенд может периодически запрашивать карточку.
+        Стажёр видит свою заявку, назначенный руководитель — заявку в любом статусе,
+        в том числе после её исчезновения из очереди согласования.
+        Чужая и отсутствующая заявки возвращают одинаковый 404.
+        Для обновления статуса frontend может периодически запрашивать карточку.
       responses:
         '200':
-          description: Ресурс, уровень, основание, участники и текущий статус.
+          description: Сохранённые параметры и актуальное состояние заявки.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessRequest'
-              example:
-                id: request-1042
-                number: 1042
-                resource:
-                  resourceId: gitlab-search-api
-                  name: GitLab · search-api
-                  accessLevel: Developer
-                  purpose: Код и работа с ветками
-                requester: {id: intern-alina, fullName: Алина Смирнова}
-                team: {id: team-search, name: Поиск}
-                approver: {id: manager-dmitry, fullName: Дмитрий Орлов}
-                status: pending
-                createdAt: '2026-11-10T14:00:00+03:00'
-                updatedAt: '2026-11-10T14:00:00+03:00'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/AccessRequestNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /access-requests/{requestId}/decision:
     parameters:
@@ -624,11 +592,11 @@ paths:
       operationId: decideAccessRequest
       summary: Одобрить или отклонить заявку
       description: |
-        Доступно назначенному согласующему для заявки pending.
-        Одобрение запускает фоновую выдачу со статусом issuing.
-        Решение и задание на выдачу сохраняются вместе. Из одновременных решений применяется первое.
-        После подтверждения тестовым сервисом заявка получает статус granted.
-        При отклонении стажёр видит комментарий руководителя.
+        Решение принимает только назначенный руководитель по заявке pending.
+        При одобрении сохраняются issuing и задание на выдачу в одной транзакции.
+        При отказе сохраняется rejected с обязательной причиной reason.
+        Повтор того же решения с той же причиной возвращает текущее состояние заявки;
+        другое решение или другая причина после решения возвращают 409.
       requestBody:
         required: true
         content:
@@ -639,17 +607,14 @@ paths:
               approve:
                 value: {decision: approve}
               reject:
-                value: {decision: reject, comment: Уточни назначение доступа.}
+                value: {decision: reject, reason: Уточни назначение доступа.}
       responses:
         '200':
-          description: Решение сохранено. Возвращается заявка в состоянии issuing или rejected.
+          description: Решение сохранено либо возвращён результат повторного вызова.
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/AccessRequest'
-                  - properties:
-                      status: {type: string, enum: [issuing, rejected]}
+                $ref: '#/components/schemas/AccessRequest'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -657,14 +622,45 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/AccessRequestNotFound'
         '409':
-          description: По заявке уже принято решение.
+          $ref: '#/components/responses/AccessConflict'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /access-requests/{requestId}/retry:
+    parameters:
+      - $ref: '#/components/parameters/AccessRequestId'
+    post:
+      tags: [AccessRequests]
+      operationId: retryAccessIssuance
+      summary: Повторить выдачу по существующей заявке
+      description: |
+        Доступно только назначенному руководителю. Тело запроса не требуется.
+        Заявка failed и её незавершённое задание возвращаются в выдачу атомарно.
+        Новая заявка не создаётся. При issuing или granted повтор ничего не меняет.
+        Перед повторной выдачей обработчик проверит фактические права.
+      responses:
+        '200':
+          description: Актуальная заявка issuing или granted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-              example: {code: decision_already_taken, message: Обнови карточку заявки.}
+                $ref: '#/components/schemas/AccessRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/AccessRequestNotFound'
+        '409':
+          $ref: '#/components/responses/AccessConflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
 components:
   securitySchemes:
@@ -742,6 +738,50 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example: {code: not_found, message: Запрошенный объект недоступен.}
+
+    AccessDraftNotFound:
+      description: Черновик отсутствует или принадлежит другому сотруднику.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: draft_not_found, message: Черновик не найден.}
+    AccessRequestNotFound:
+      description: Заявка отсутствует или недоступна текущему сотруднику.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: request_not_found, message: Заявка не найдена.}
+    AccessConflict:
+      description: |
+        Состояние не допускает операцию. Возможные коды: draft_expired, draft_changed,
+        access_already_granted, active_request_exists, request_already_decided, invalid_request_state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RequestTooLarge:
+      description: JSON-тело превышает 1 МиБ.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: request_too_large, message: Тело запроса слишком большое.}
+    UnsupportedMediaType:
+      description: Для JSON-тела нужен Content-Type application/json.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: unsupported_media_type, message: Передай тело запроса в формате application/json.}
+    InternalError:
+      description: Внутренняя ошибка; служебные подробности не передаются клиенту.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: {code: internal_error, message: Не удалось выполнить запрос. Попробуй позже.}
 
   schemas:
     Error:
@@ -1035,7 +1075,7 @@ components:
             $ref: '#/components/schemas/AccessResource'
         progress:
           allOf:
-            - $ref: '#/components/schemas/Progress'
+            - $ref: '#/components/schemas/AccessProgress'
           description: Количество ресурсов с подтверждённым доступом из всех обязательных.
 
     AccessResource:
@@ -1043,33 +1083,22 @@ components:
       required: [id, service, name, accessLevel, purpose, status, canRequest]
       properties:
         id: {type: string, example: gitlab-search-api}
-        service: {type: string, enum: [wiki, youtrack, gitlab, grafana], example: gitlab}
+        service: {type: string, example: gitlab}
         name: {type: string, example: GitLab · search-api}
         accessLevel: {type: string, example: Developer}
         purpose: {type: string, example: Код и работа с ветками}
-        status:
-          type: string
-          enum: [requestable, pending, issuing, granted, rejected, provisioning_failed]
+        status: {type: string, enum: [requestable, pending, issuing, granted, failed]}
         canRequest:
           type: boolean
-          description: |
-            Можно включить ресурс в новый черновик. При подтверждённом сбое этот флаг
-            позволяет запустить новый запрос через тот же процесс согласования.
-        requestId: {type: string, description: 'Идентификатор последней заявки по ресурсу, если она есть.'}
-      oneOf:
-        - properties:
-            status: {type: string, enum: [requestable]}
-            canRequest: {type: boolean, enum: [true]}
-        - required: [requestId]
+          description: true только для requestable. При failed повторяется прежняя заявка.
+        request:
+          type: object
+          description: Активная заявка для статусов pending, issuing и failed.
+          required: [id, number, status]
           properties:
-            status: {type: string, enum: [pending, issuing]}
-            canRequest: {type: boolean, enum: [false]}
-        - properties:
-            status: {type: string, enum: [granted]}
-            canRequest: {type: boolean, enum: [false]}
-        - required: [requestId]
-          properties:
-            status: {type: string, enum: [rejected, provisioning_failed]}
+            id: {type: string}
+            number: {type: integer, format: int64}
+            status: {type: string, enum: [pending, issuing, failed]}
 
     ChatMessageInput:
       type: object
@@ -1143,195 +1172,102 @@ components:
           not:
             required: [assistantMessageId]
 
-    AccessSelection:
-      oneOf:
+    AccessProgress:
+      allOf:
+        - $ref: '#/components/schemas/Progress'
         - type: object
-          additionalProperties: false
-          required: [mode]
+          required: [inProgress, failed]
           properties:
-            mode: {type: string, enum: [all_missing]}
-        - type: object
-          additionalProperties: false
-          required: [mode, resourceIds]
-          properties:
-            mode: {type: string, enum: [selected]}
-            resourceIds:
-              type: array
-              minItems: 1
-              uniqueItems: true
-              items: {type: string, minLength: 1}
-              example: [gitlab-search-api, grafana-search]
+            inProgress: {type: integer, minimum: 0, description: Ресурсы на согласовании или выдаче.}
+            failed: {type: integer, minimum: 0, description: Ресурсы с ошибкой выдачи.}
+
+    AccessRequestStatus:
+      type: string
+      enum: [pending, issuing, granted, rejected, failed]
+      description: |
+        pending — ожидает согласования; issuing — выдаётся; granted — доступ подтверждён;
+        rejected — отказ руководителя; failed — ошибка проверки или выдачи.
+        failed блокирует создание дубля и допускает повтор существующей заявки.
+
+    AccessRequestParameters:
+      type: object
+      required: [resourceName, resourceService, resourceExternalId, accessLevel, purpose, approverName]
+      properties:
+        resourceName: {type: string, example: GitLab · search-api}
+        resourceService: {type: string, example: gitlab}
+        resourceExternalId: {type: string, example: search/search-api}
+        accessLevel: {type: string, example: Developer}
+        purpose: {type: string, example: Работа с кодом команды}
+        approverName: {type: string, example: Дмитрий Орлов}
 
     AccessDraft:
       type: object
-      required: [id, items, skipped]
+      description: Черновик одного доступа из серверного инструмента агента.
+      required: [id, resourceId, approverId, parameters, createdAt, expiresAt]
       properties:
         id: {type: string, example: draft-1}
-        items:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/AccessDraftItem'
-        skipped:
-          type: array
-          items:
-            $ref: '#/components/schemas/SkippedResource'
-
-    RequestedResource:
-      type: object
-      required: [resourceId, name, accessLevel, purpose]
-      properties:
         resourceId: {type: string, example: gitlab-search-api}
-        name: {type: string, example: GitLab · search-api}
-        accessLevel: {type: string, example: Developer}
-        purpose: {type: string, example: Код и работа с ветками}
+        approverId: {type: string, example: manager-dmitry}
+        parameters:
+          $ref: '#/components/schemas/AccessRequestParameters'
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time, description: Срок действия — 15 минут после подготовки.}
 
-    AccessDraftItem:
-      allOf:
-        - $ref: '#/components/schemas/RequestedResource'
-        - type: object
-          required: [approverName]
-          properties:
-            approverName: {type: string, example: Дмитрий Орлов}
-
-    ActiveRequestRef:
+    AccessConfirmation:
       type: object
-      required: [requestId, requestNumber, requestStatus]
+      additionalProperties: false
+      required: [confirmed]
       properties:
-        requestId: {type: string, example: request-1042}
-        requestNumber: {type: integer, minimum: 1, example: 1042}
-        requestStatus: {type: string, enum: [pending, issuing], example: pending}
+        confirmed: {type: boolean, enum: [true], description: Явное согласие владельца на отправку показанного черновика.}
 
-    SkippedResource:
-      oneOf:
-        - allOf:
-            - $ref: '#/components/schemas/ActiveRequestRef'
-            - type: object
-              required: [resourceId, reason]
-              properties:
-                resourceId: {type: string, example: gitlab-search-api}
-                reason: {type: string, enum: [already_requested]}
-        - type: object
-          additionalProperties: false
-          required: [resourceId, reason]
-          properties:
-            resourceId: {type: string, example: team-wiki}
-            reason: {type: string, enum: [already_granted, unavailable]}
-
-    NoRequestableResources:
-      allOf:
-        - $ref: '#/components/schemas/Error'
-        - type: object
-          required: [skipped]
-          properties:
-            code: {type: string, enum: [no_requestable_resources]}
-            skipped:
-              type: array
-              items:
-                $ref: '#/components/schemas/SkippedResource'
-
-    AccessSubmission:
+    AccessRequestCounts:
       type: object
-      required: [draftId, items]
+      required: [total, active, completed, pending, issuing, granted, rejected, failed]
+      description: Для стажёра — до фильтров; для руководителя — только его очередь pending.
       properties:
-        draftId: {type: string, example: draft-1}
-        items:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/AccessSubmissionItem'
-
-    AccessSubmissionItem:
-      oneOf:
-        - allOf:
-            - $ref: '#/components/schemas/ActiveRequestRef'
-            - type: object
-              required: [resourceId, outcome]
-              properties:
-                resourceId: {type: string, example: gitlab-search-api}
-                outcome: {type: string, enum: [created]}
-                requestStatus: {type: string, enum: [pending]}
-        - allOf:
-            - $ref: '#/components/schemas/ActiveRequestRef'
-            - type: object
-              required: [resourceId, outcome]
-              properties:
-                resourceId: {type: string, example: gitlab-search-api}
-                outcome: {type: string, enum: [already_requested]}
-        - type: object
-          additionalProperties: false
-          required: [resourceId, outcome]
-          properties:
-            resourceId: {type: string, example: team-wiki}
-            outcome: {type: string, enum: [already_granted, unavailable]}
+        total: {type: integer, format: int64, minimum: 0}
+        active: {type: integer, format: int64, minimum: 0, description: pending + issuing + failed.}
+        completed: {type: integer, format: int64, minimum: 0, description: granted + rejected.}
+        pending: {type: integer, format: int64, minimum: 0}
+        issuing: {type: integer, format: int64, minimum: 0}
+        granted: {type: integer, format: int64, minimum: 0}
+        rejected: {type: integer, format: int64, minimum: 0}
+        failed: {type: integer, format: int64, minimum: 0}
 
     AccessRequestList:
       type: object
-      required: [items, summary]
+      required: [items, total, counts, limit, offset]
       properties:
         items:
           type: array
           items:
             $ref: '#/components/schemas/AccessRequest'
-        summary:
-          $ref: '#/components/schemas/AccessRequestSummary'
+        total: {type: integer, format: int64, minimum: 0, description: Размер списка после фильтров и до пагинации.}
+        counts:
+          $ref: '#/components/schemas/AccessRequestCounts'
+        limit: {type: integer, minimum: 1, maximum: 100}
+        offset: {type: integer, minimum: 0}
 
     AccessRequest:
       type: object
-      required: [id, number, resource, requester, team, approver, status, createdAt, updatedAt]
+      required: [id, number, draftId, employeeId, resourceId, approverId, parameters, status, createdAt, updatedAt]
       properties:
         id: {type: string, example: request-1042}
-        number: {type: integer, minimum: 1, example: 1042}
-        resource:
-          $ref: '#/components/schemas/RequestedResource'
-        requester:
-          $ref: '#/components/schemas/PersonRef'
-        team:
-          $ref: '#/components/schemas/TeamRef'
-        approver:
-          $ref: '#/components/schemas/PersonRef'
+        number: {type: integer, format: int64, minimum: 1, example: 1042}
+        draftId: {type: string, example: draft-1}
+        employeeId: {type: string, example: intern-alina}
+        resourceId: {type: string, example: gitlab-search-api}
+        approverId: {type: string, example: manager-dmitry}
+        parameters:
+          $ref: '#/components/schemas/AccessRequestParameters'
         status:
-          type: string
-          enum: [pending, issuing, granted, rejected, provisioning_failed]
-          description: |
-            pending — на согласовании. issuing — выдача или проверка результата после таймаута.
-            granted — доступ подтверждён. rejected — отклонена.
-            provisioning_failed — сбой подтверждён после проверки текущего доступа.
-        decisionComment:
-          type: string
-          minLength: 1
-          pattern: '\S'
-          description: Комментарий руководителя при отклонении.
-        provisioningError:
-          allOf:
-            - $ref: '#/components/schemas/Error'
-          description: Понятное пользователю сообщение о сбое и следующем шаге.
+          $ref: '#/components/schemas/AccessRequestStatus'
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
-      oneOf:
-        - properties:
-            status: {type: string, enum: [pending, issuing, granted]}
-          not:
-            anyOf:
-              - required: [decisionComment]
-              - required: [provisioningError]
-        - properties:
-            status: {type: string, enum: [rejected]}
-          required: [decisionComment]
-          not:
-            required: [provisioningError]
-        - properties:
-            status: {type: string, enum: [provisioning_failed]}
-          required: [provisioningError]
-          not:
-            required: [decisionComment]
-
-    PersonRef:
-      type: object
-      required: [id, fullName]
-      properties:
-        id: {type: string, example: intern-alina}
-        fullName: {type: string, example: Алина Смирнова}
+        decidedAt: {type: string, format: date-time}
+        decisionReason: {type: string, description: Причина решения; обязательна при отказе.}
+        grantedAt: {type: string, format: date-time}
+        lastError: {type: string, description: Понятное сообщение об ошибке выдачи.}
 
     AccessDecision:
       oneOf:
@@ -1340,14 +1276,15 @@ components:
           required: [decision]
           properties:
             decision: {type: string, enum: [approve]}
+            reason: {type: string, maxLength: 2000}
         - type: object
           additionalProperties: false
-          required: [decision, comment]
+          required: [decision, reason]
           properties:
             decision: {type: string, enum: [reject]}
-            comment:
+            reason:
               type: string
               minLength: 1
-              maxLength: 200
+              maxLength: 2000
               pattern: '\S'
-              description: Причина отклонения. Пробелы по краям удаляются перед проверкой.
+              description: Причина отказа. Пробелы по краям удаляются перед проверкой.

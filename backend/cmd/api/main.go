@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,11 +10,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/access"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/accessrequest"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/config"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/db"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/demoprovider"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler"
+	accesshandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/access"
+	requesthandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/accessrequest"
 	authhandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/auth"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/issuanceworker"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 )
 
@@ -50,36 +55,33 @@ func run() error {
 	migrationCtx, cancelMigration := context.WithTimeout(ctx, time.Minute)
 	err = conn.WithContext(migrationCtx).AutoMigrate(
 		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
+		&models.Resource{}, &models.AccessRequirement{}, &models.EmployeeAccess{},
+		&models.AccessDraft{}, &models.AccessRequest{}, &models.AccessIssuanceJob{},
+		&models.DemoProviderAccess{}, &models.DemoProviderOperation{},
 	)
 	cancelMigration()
 	if err != nil {
-		return fmt.Errorf("подготовить таблицы авторизации: %w", err)
+		return fmt.Errorf("подготовить таблицы приложения: %w", err)
 	}
-	slog.Info("таблицы авторизации готовы")
+	slog.Info("таблицы приложения готовы")
 
+	requests := accessrequest.NewService(conn)
+	worker, err := issuanceworker.NewWorker(requests, demoprovider.NewProvider(conn), cfg.IssuancePollInterval, slog.Default())
+	if err != nil {
+		return err
+	}
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           handler.NewRouter(authhandler.NewAuthHandler(auth.NewService(conn))),
+		Addr: cfg.HTTPAddr,
+		Handler: handler.NewRouter(
+			authhandler.NewAuthHandler(auth.NewService(conn)),
+			accesshandler.NewAccessHandler(access.NewService(conn)),
+			requesthandler.NewRequestHandler(requests),
+		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	serverErrors := make(chan error, 1)
-	go func() {
-		slog.Info("HTTP-сервер запускается", "addr", cfg.HTTPAddr)
-		serverErrors <- server.ListenAndServe()
-	}()
-	select {
-	case err := <-serverErrors:
-		return fmt.Errorf("запустить HTTP-сервер: %w", err)
-	case <-ctx.Done():
-		stop()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			return errors.Join(fmt.Errorf("остановить HTTP-сервер: %w", err), server.Close())
-		}
-		return nil
-	}
+	slog.Info("HTTP-сервер запускается", "addr", cfg.HTTPAddr)
+	return serve(ctx, server, worker)
 }

@@ -1,0 +1,30 @@
+positions:
+  - id: "position-backend-go"
+    name: "Backend-разработчик Go"
+
+  - id: "position-frontend"
+    name: "Frontend-разработчик"
+
+  - id: "position-backend-python"
+    name: "Backend-разработчик Python"
+
+  - id: "position-qa"
+    name: "Инженер по тестированию"
+
+  - id: "position-data-analyst"
+    name: "Аналитик данных"
+
+  - id: "position-data-scientist"
+    name: "Data Scientist"
+
+  - id: "position-ml-engineer"
+    name: "ML-инженер"
+
+  - id: "position-devops"
+    name: "DevOps-инженер"
+
+  - id: "position-designer"
+    name: "Продуктовый дизайнер"
+
+  - id: "position-team-lead"
+    name: "Руководитель команды"

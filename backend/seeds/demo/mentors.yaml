@@ -1,0 +1,50 @@
+mentors:
+  - id: "mentor-katya"
+    team_id: "team-search"
+    first_name: "Катя"
+    second_name: "Волкова"
+
+  - id: "mentor-oleg"
+    team_id: "team-web"
+    first_name: "Олег"
+    second_name: "Морозов"
+
+  - id: "mentor-elena"
+    team_id: "team-trust"
+    first_name: "Елена"
+    second_name: "Попова"
+
+  - id: "mentor-nikita"
+    team_id: "team-quality"
+    first_name: "Никита"
+    second_name: "Захаров"
+
+  - id: "mentor-irina"
+    team_id: "team-analytics"
+    first_name: "Ирина"
+    second_name: "Фёдорова"
+
+  - id: "mentor-andrey"
+    team_id: "team-recommendations"
+    first_name: "Андрей"
+    second_name: "Алексеев"
+
+  - id: "mentor-svetlana"
+    team_id: "team-ml-platform"
+    first_name: "Светлана"
+    second_name: "Павлова"
+
+  - id: "mentor-denis"
+    team_id: "team-infrastructure"
+    first_name: "Денис"
+    second_name: "Макаров"
+
+  - id: "mentor-alexey"
+    team_id: "team-design"
+    first_name: "Алексей"
+    second_name: "Тарасов"
+
+  - id: "mentor-yulia"
+    team_id: "team-experiments"
+    first_name: "Юлия"
+    second_name: "Борисова"

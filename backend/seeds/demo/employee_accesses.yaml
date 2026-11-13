@@ -1,0 +1,12 @@
+employee_accesses:
+  - id: "access-alina-wiki"
+    employee_id: "intern-alina"
+    resource_id: "team-wiki"
+    access_level: "read"
+    verified_at: "2026-11-12T09:00:00+03:00"
+
+  - id: "access-alina-youtrack"
+    employee_id: "intern-alina"
+    resource_id: "youtrack-search"
+    access_level: "member"
+    verified_at: "2026-11-12T09:00:00+03:00"
