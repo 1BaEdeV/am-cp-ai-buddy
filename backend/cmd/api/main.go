@@ -56,6 +56,7 @@ func run() error {
 		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
 		&models.Resource{}, &models.AccessRequirement{}, &models.EmployeeAccess{},
 		&models.AccessDraft{}, &models.AccessRequest{}, &models.AccessIssuanceJob{},
+		&models.DemoProviderAccess{}, &models.DemoProviderOperation{},
 	)
 	cancelMigration()
 	if err != nil {
