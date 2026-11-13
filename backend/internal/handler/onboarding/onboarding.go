@@ -75,3 +75,31 @@ func (h *OnboardingHandler) GetPlan(w http.ResponseWriter, r *http.Request) {
 
 	handler.WriteJSON(w, http.StatusOK, plan)
 }
+
+
+func (h *OnboardingHandler) CompleteTeamIntro(w http.ResponseWriter, r *http.Request) {
+	employeeID := strings.TrimSpace(r.Header.Get(demoEmployeeHeader))
+	if employeeID == "" {
+		handler.WriteAPIError(
+			w,
+			http.StatusUnauthorized,
+			"demo_identity_required",
+			"Введи демо-почту или внутренний ID.",
+		)
+		return
+	}
+
+	err := h.service.CompleteTeamIntro(r.Context(), employeeID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	plan, err := h.service.GetPlan(r.Context(), employeeID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	handler.WriteJSON(w, http.StatusOK, plan)
+}

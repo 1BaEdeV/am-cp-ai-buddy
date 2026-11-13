@@ -11,6 +11,7 @@ type AuthEndpoints interface {
 type OnboardingEndpoints interface {
 	GetTeamIntro(http.ResponseWriter, *http.Request)
 	GetPlan(http.ResponseWriter, *http.Request)
+	CompleteTeamIntro(http.ResponseWriter, *http.Request)
 }
 
 func NewRouter(
@@ -27,6 +28,11 @@ func NewRouter(
 		onboardingHandler.GetTeamIntro,
 	)
 	mux.HandleFunc("GET /api/v1/onboarding", onboardingHandler.GetPlan)
+
+	mux.HandleFunc(
+		"POST /api/v1/onboarding/tasks/team-intro/complete",
+		onboardingHandler.CompleteTeamIntro,
+	)
 
 	return mux
 }
