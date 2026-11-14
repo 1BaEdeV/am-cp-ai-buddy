@@ -15,6 +15,7 @@ type OnboardingEndpoints interface {
 }
 type ChatEndpoints interface {
 	GetTaskChat(http.ResponseWriter, *http.Request)
+	SendTaskChatMessage(http.ResponseWriter, *http.Request)
 }
 
 func NewRouter(
@@ -40,6 +41,11 @@ func NewRouter(
 	mux.HandleFunc(
 		"GET /api/v1/onboarding/tasks/{taskId}/chat",
 		chatHandler.GetTaskChat,
+	)
+
+	mux.HandleFunc(
+		"POST /api/v1/onboarding/tasks/{taskId}/chat/messages",
+		chatHandler.SendTaskChatMessage,
 	)
 
 	return mux
