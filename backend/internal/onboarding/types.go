@@ -30,6 +30,7 @@ type TaskDetails struct {// полная карточка одного этап�
 	Description string     `json:"description"`
 	ChatEnabled bool       `json:"chatEnabled"`
 	TeamIntro   *TeamIntro `json:"teamIntro,omitempty"`
+	WorkingAccesses *WorkingAccesses `json:"workingAccesses,omitempty"`
 }
 
 
@@ -50,6 +51,23 @@ type PlanProgress struct { //число завершённых этапов из
 type Progress struct { // число полученных доступов из числа обязательных ресурсов.
 	Completed int `json:"completed"`
 	Total     int `json:"total"`
+}
+
+type WorkingAccesses struct { // содержит обязательные ресурсы команды и прогресс их выдачи.
+	Resources []AccessResource `json:"resources"`
+	Progress  Progress        `json:"progress"`
+}
+
+
+type AccessResource struct { // описывает один ресурс, который нужен стажёру для работы.
+	ID          string `json:"id"`
+	Service     string `json:"service"`
+	Name        string `json:"name"`
+	AccessLevel string `json:"accessLevel"`
+	Purpose     string `json:"purpose"`
+	Status      string `json:"status"`
+	CanRequest  bool   `json:"canRequest"`
+	RequestID   string `json:"requestId,omitempty"`
 }
 
 

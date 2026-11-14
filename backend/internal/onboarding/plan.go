@@ -8,14 +8,18 @@ func (s *Service) GetPlan(ctx context.Context, employeeID string) (OnboardingPla
 		return OnboardingPlan{}, err
 	}
 
+	accesses := demoWorkingAccesses()
 	introCompleted := intro.Status == "completed"
+	accessCompleted := accesses.Progress.Total > 0 &&
+		accesses.Progress.Completed == accesses.Progress.Total
 
-	accessCompleted := false
-	accessProgress := Progress{
-		Completed: 0,
-		Total:     4,
-	}
 	accessStatus := "not_started"
+	if accesses.Progress.Completed > 0 {
+		accessStatus = "in_progress"
+	}
+	if accessCompleted {
+		accessStatus = "completed"
+	}
 
 	tasks := []TaskSummary{
 		{
@@ -46,10 +50,8 @@ func (s *Service) GetPlan(ctx context.Context, employeeID string) (OnboardingPla
 		completedTasks++
 	}
 
-	firstTaskStatus := "locked"
 	if introCompleted && accessCompleted {
-		firstTaskStatus = "coming_soon"
-		tasks[2].Status = firstTaskStatus
+		tasks[2].Status = "coming_soon"
 	}
 
 	nextTaskID := "team-intro"
@@ -75,7 +77,7 @@ func (s *Service) GetPlan(ctx context.Context, employeeID string) (OnboardingPla
 	return OnboardingPlan{
 		Tasks:          tasks,
 		Progress:       PlanProgress{Completed: completedTasks, Total: 3},
-		AccessProgress: accessProgress,
+		AccessProgress: accesses.Progress,
 		NextTaskID:     nextTaskID,
 		AccessRequestSummary: AccessRequestSummary{
 			Pending:    0,
@@ -85,29 +87,109 @@ func (s *Service) GetPlan(ctx context.Context, employeeID string) (OnboardingPla
 		UpcomingMeeting: upcomingMeeting,
 	}, nil
 }
-func (s *Service) GetFirstTaskDetails(
+
+// GetTaskDetails собирает подробности выбранного этапа.
+func (s *Service) GetTaskDetails(
 	ctx context.Context,
 	employeeID string,
+	taskID string,
 ) (TaskDetails, error) {
-	plan, err := s.GetPlan(ctx, employeeID)
-	if err != nil {
-		return TaskDetails{}, err
-	}
+	switch taskID {
+	case "team-intro":
+		return s.GetTeamIntro(ctx, employeeID)
 
-	status := "locked"
+	case "working-accesses":
+		plan, err := s.GetPlan(ctx, employeeID)
+		if err != nil {
+			return TaskDetails{}, err
+		}
+
+		return TaskDetails{
+			ID:          "working-accesses",
+			Title:       "Рабочие доступы",
+			Subtitle:    "Ресурсы команды",
+			Status:      taskStatus(plan, "working-accesses"),
+			Description: "Проверь доступы к обязательным ресурсам команды.",
+			ChatEnabled: true,
+			WorkingAccesses: func() *WorkingAccesses {
+				accesses := demoWorkingAccesses()
+				return &accesses
+			}(),
+		}, nil
+
+	case "first-task":
+		plan, err := s.GetPlan(ctx, employeeID)
+		if err != nil {
+			return TaskDetails{}, err
+		}
+
+		return TaskDetails{
+			ID:          "first-task",
+			Title:       "Первая задача",
+			Subtitle:    "Учебная задача от руководителя",
+			Status:      taskStatus(plan, "first-task"),
+			Description: "Познакомься с командой и получи обязательные доступы.",
+			ChatEnabled: false,
+		}, nil
+
+	default:
+		return TaskDetails{}, ErrInvalidTask
+	}
+}
+
+func taskStatus(plan OnboardingPlan, taskID string) string {
 	for _, task := range plan.Tasks {
-		if task.ID == "first-task" {
-			status = task.Status
-			break
+		if task.ID == taskID {
+			return task.Status
 		}
 	}
+	return "locked"
+}
 
-	return TaskDetails{
-		ID:          "first-task",
-		Title:       "Первая задача",
-		Subtitle:    "Учебная задача от руководителя",
-		Status:      status,
-		Description: "Познакомься с командой и получи обязательные доступы.",
-		ChatEnabled: false,
-	}, nil
+// Временные данные для демо; позже их заменит сервис доступов.
+func demoWorkingAccesses() WorkingAccesses {
+	return WorkingAccesses{
+		Resources: []AccessResource{
+			{
+				ID:          "team-wiki",
+				Service:     "wiki",
+				Name:        "Вики команды",
+				AccessLevel: "Чтение",
+				Purpose:     "Инструкции и процессы команды",
+				Status:      "granted",
+				CanRequest:  false,
+			},
+			{
+				ID:          "youtrack-search",
+				Service:     "youtrack",
+				Name:        "YouTrack",
+				AccessLevel: "Участник проекта",
+				Purpose:     "Работа с задачами команды",
+				Status:      "granted",
+				CanRequest:  false,
+			},
+			{
+				ID:          "gitlab-search-api",
+				Service:     "gitlab",
+				Name:        "GitLab · search-api",
+				AccessLevel: "Developer",
+				Purpose:     "Код и работа с ветками",
+				Status:      "requestable",
+				CanRequest:  true,
+			},
+			{
+				ID:          "grafana-search",
+				Service:     "grafana",
+				Name:        "Grafana · Поиск",
+				AccessLevel: "Чтение",
+				Purpose:     "Дашборды тестового окружения",
+				Status:      "requestable",
+				CanRequest:  true,
+			},
+		},
+		Progress: Progress{
+			Completed: 2,
+			Total:     4,
+		},
+	}
 }

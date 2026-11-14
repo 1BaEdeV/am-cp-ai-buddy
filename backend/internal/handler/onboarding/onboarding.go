@@ -49,6 +49,8 @@ func (h *OnboardingHandler) writeError(w http.ResponseWriter, r *http.Request, e
 		handler.WriteAPIError(w, http.StatusForbidden, "forbidden", "Карточка доступна только стажёру.")
 	case errors.Is(err, onboarding.ErrProfileNotFound):
 		handler.WriteAPIError(w, http.StatusForbidden, "profile_required", "Сначала заполни профиль.")
+	case errors.Is(err, onboarding.ErrInvalidTask):
+		handler.WriteAPIError(w, http.StatusNotFound, "task_not_found", "Пункт плана не найден.")
 	default:
 		slog.ErrorContext(r.Context(), "получить карточку знакомства", "error", err)
 		handler.WriteAPIError(w, http.StatusInternalServerError, "internal_error", "Не удалось загрузить карточку.")
@@ -118,19 +120,7 @@ func (h *OnboardingHandler) GetTaskDetails(w http.ResponseWriter, r *http.Reques
 	}
 
 	taskID := r.PathValue("taskId")
-
-	// Пока эта карточка готова только для заглушки «Первая задача».
-	if taskID != "first-task" {
-		handler.WriteAPIError(
-			w,
-			http.StatusNotFound,
-			"task_not_found",
-			"Пункт плана не найден.",
-		)
-		return
-	}
-
-	task, err := h.service.GetFirstTaskDetails(r.Context(), employeeID)
+	task, err := h.service.GetTaskDetails(r.Context(), employeeID, taskID)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

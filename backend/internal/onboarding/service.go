@@ -18,6 +18,7 @@ var (
 	ErrProfileNotFound = errors.New("профиль стажёра не найден")
 	ErrManagerNotFound = errors.New("руководитель команды не найден")
 	ErrMentorNotFound  = errors.New("у стажёра не выбран наставник")
+	ErrInvalidTask = errors.New("неизвестный этап адаптации")
 )
 
 type Service struct {
