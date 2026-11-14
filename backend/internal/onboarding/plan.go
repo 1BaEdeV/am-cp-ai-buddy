@@ -85,3 +85,29 @@ func (s *Service) GetPlan(ctx context.Context, employeeID string) (OnboardingPla
 		UpcomingMeeting: upcomingMeeting,
 	}, nil
 }
+func (s *Service) GetFirstTaskDetails(
+	ctx context.Context,
+	employeeID string,
+) (TaskDetails, error) {
+	plan, err := s.GetPlan(ctx, employeeID)
+	if err != nil {
+		return TaskDetails{}, err
+	}
+
+	status := "locked"
+	for _, task := range plan.Tasks {
+		if task.ID == "first-task" {
+			status = task.Status
+			break
+		}
+	}
+
+	return TaskDetails{
+		ID:          "first-task",
+		Title:       "Первая задача",
+		Subtitle:    "Учебная задача от руководителя",
+		Status:      status,
+		Description: "Познакомься с командой и получи обязательные доступы.",
+		ChatEnabled: false,
+	}, nil
+}

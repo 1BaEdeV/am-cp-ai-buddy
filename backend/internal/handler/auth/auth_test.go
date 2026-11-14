@@ -44,6 +44,11 @@ func newRouter(service authhandler.AuthService) http.Handler {
 }
 func (chatStub) SendTaskChatMessage(http.ResponseWriter, *http.Request) {}
 type chatStub struct{}
+func (onboardingStub) GetTaskDetails(
+	http.ResponseWriter,
+	*http.Request,
+) {
+}
 func (chatStub) GetTaskChat(http.ResponseWriter, *http.Request) {}
 func (onboardingStub) CompleteTeamIntro(http.ResponseWriter, *http.Request) {}
 
