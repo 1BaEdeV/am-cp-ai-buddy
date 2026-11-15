@@ -12,10 +12,12 @@ import (
 	requestservice "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/accessrequest"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
@@ -179,4 +181,64 @@ func TestPostgresParallelWorkersClaimOnlyOnce(t *testing.T) {
 	b := awaitWorker(t, ctx, results)
 	require.NoError(t, b.err)
 	require.True(t, b.worked)
+}
+
+func TestPostgresRequestConstraints(t *testing.T) {
+	s, db := postgresRequestService(t)
+	created := pendingRequest(t, s, "gitlab")
+	var original models.AccessRequest
+	require.NoError(t, db.Take(&original, "id = ?", created.ID).Error)
+	var draft models.AccessDraft
+	require.NoError(t, db.Take(&draft, "id = ?", original.DraftID).Error)
+	for _, tt := range []struct {
+		name, code string
+		change     func(*models.AccessRequest)
+	}{
+		{"same draft", "23505", func(r *models.AccessRequest) { r.DraftID = original.DraftID }},
+		{"same active resource", "23505", func(*models.AccessRequest) {}},
+		{"failed remains active", "23505", func(r *models.AccessRequest) { r.Status = models.AccessRequestFailed }},
+		{"same number", "23505", func(r *models.AccessRequest) {
+			r.Number, r.Status, r.DecisionReason = original.Number, models.AccessRequestRejected, "Отказ"
+		}},
+		{"unknown employee", "23503", func(r *models.AccessRequest) { r.EmployeeID = "missing" }},
+		{"unknown resource", "23503", func(r *models.AccessRequest) { r.ResourceID = "missing" }},
+		{"unknown draft", "23503", func(r *models.AccessRequest) {
+			r.DraftID, r.ResourceID = "missing", "grafana"
+		}},
+		{"unknown approver", "23503", func(r *models.AccessRequest) {
+			r.ApproverID, r.ResourceID = "missing", "grafana"
+		}},
+		{"invalid status", "23514", func(r *models.AccessRequest) { r.Status = "invalid" }},
+		{"rejection without reason", "23514", func(r *models.AccessRequest) { r.Status = models.AccessRequestRejected }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			nextDraft := draft
+			nextDraft.ID, nextDraft.ConfirmedAt = rand.Text(), nil
+			require.NoError(t, db.Omit(clause.Associations).Create(&nextDraft).Error)
+			candidate := original
+			candidate.ID, candidate.DraftID, candidate.Number = rand.Text(), nextDraft.ID, 0
+			tt.change(&candidate)
+			err := db.Omit(clause.Associations).Create(&candidate).Error
+			var pgErr *pgconn.PgError
+			require.ErrorAs(t, err, &pgErr)
+			require.Equal(t, tt.code, pgErr.Code)
+		})
+	}
+	t.Run("job requires existing request", func(t *testing.T) {
+		now := time.Now().UTC()
+		err := db.Omit(clause.Associations).Create(&models.AccessIssuanceJob{RequestID: "missing", AvailableAt: now, CreatedAt: now, UpdatedAt: now}).Error
+		var pgErr *pgconn.PgError
+		require.ErrorAs(t, err, &pgErr)
+		require.Equal(t, "23503", pgErr.Code)
+	})
+	t.Run("rejected does not block another request", func(t *testing.T) {
+		nextDraft := draft
+		nextDraft.ID, nextDraft.ConfirmedAt = rand.Text(), nil
+		require.NoError(t, db.Omit(clause.Associations).Create(&nextDraft).Error)
+		candidate := original
+		candidate.ID, candidate.DraftID, candidate.Number = rand.Text(), nextDraft.ID, 0
+		candidate.Status, candidate.DecisionReason = models.AccessRequestRejected, "Отказ"
+		require.NoError(t, db.Omit(clause.Associations).Create(&candidate).Error)
+		require.Greater(t, candidate.Number, original.Number)
+	})
 }

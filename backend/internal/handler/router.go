@@ -23,7 +23,13 @@ type AccessRequestEndpoints interface {
 	RetryIssuance(http.ResponseWriter, *http.Request)
 }
 
-func NewRouter(authHandler AuthEndpoints, accessHandler AccessEndpoints, requestHandler AccessRequestEndpoints) http.Handler {
+// MLToolEndpoints регистрируются только при настроенном сервисном токене ML.
+type MLToolEndpoints interface {
+	ListTools(http.ResponseWriter, *http.Request)
+	CallTool(http.ResponseWriter, *http.Request)
+}
+
+func NewRouter(authHandler AuthEndpoints, accessHandler AccessEndpoints, requestHandler AccessRequestEndpoints, toolHandlers ...MLToolEndpoints) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
@@ -37,6 +43,10 @@ func NewRouter(authHandler AuthEndpoints, accessHandler AccessEndpoints, request
 		mux.HandleFunc("GET /api/v1/access-requests/{requestId}", requestHandler.GetRequest)
 		mux.HandleFunc("POST /api/v1/access-requests/{requestId}/decision", requestHandler.DecideRequest)
 		mux.HandleFunc("POST /api/v1/access-requests/{requestId}/retry", requestHandler.RetryIssuance)
+	}
+	if len(toolHandlers) > 0 && toolHandlers[0] != nil {
+		mux.HandleFunc("GET /api/v1/internal/ml/tools", toolHandlers[0].ListTools)
+		mux.HandleFunc("POST /api/v1/internal/ml/tools/{toolName}", toolHandlers[0].CallTool)
 	}
 	return mux
 }

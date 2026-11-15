@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,12 +15,15 @@ import (
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/config"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/db"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/demoprovider"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/demoseed"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler"
 	accesshandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/access"
 	requesthandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/accessrequest"
 	authhandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/auth"
+	mlhandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/mltools"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/issuanceworker"
-	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/mltools"
+	demodata "github.com/1BaEdeV/am-cp-ai-buddy/backend/seeds/demo"
 )
 
 func main() {
@@ -53,20 +55,30 @@ func run() error {
 	}()
 
 	migrationCtx, cancelMigration := context.WithTimeout(ctx, time.Minute)
-	err = conn.WithContext(migrationCtx).AutoMigrate(
-		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
-		&models.Resource{}, &models.AccessRequirement{}, &models.EmployeeAccess{},
-		&models.AccessDraft{}, &models.AccessRequest{}, &models.AccessIssuanceJob{},
-		&models.DemoProviderAccess{}, &models.DemoProviderOperation{},
-	)
+	err = db.Migrate(migrationCtx, conn)
 	cancelMigration()
 	if err != nil {
-		return fmt.Errorf("подготовить таблицы приложения: %w", err)
+		return err
 	}
 	slog.Info("таблицы приложения готовы")
+	if cfg.DemoSeedOnStartup {
+		seedCtx, cancelSeed := context.WithTimeout(ctx, time.Minute)
+		counts, err := demoseed.Load(seedCtx, conn, demodata.Files)
+		cancelSeed()
+		if err != nil {
+			return err
+		}
+		slog.Info("демо-данные загружены", "counts", counts)
+	}
 
 	requests := accessrequest.NewService(conn)
-	worker, err := issuanceworker.NewWorker(requests, demoprovider.NewProvider(conn), cfg.IssuancePollInterval, slog.Default())
+	accesses := access.NewService(conn)
+	provider := demoprovider.NewProvider(conn)
+	var toolHandler handler.MLToolEndpoints
+	if cfg.MLToolsToken != "" {
+		toolHandler = mlhandler.NewHandler(mltools.NewService(conn, accesses, requests, provider), cfg.MLToolsToken)
+	}
+	worker, err := issuanceworker.NewWorker(requests, provider, cfg.IssuancePollInterval, slog.Default())
 	if err != nil {
 		return err
 	}
@@ -74,8 +86,9 @@ func run() error {
 		Addr: cfg.HTTPAddr,
 		Handler: handler.NewRouter(
 			authhandler.NewAuthHandler(auth.NewService(conn)),
-			accesshandler.NewAccessHandler(access.NewService(conn)),
+			accesshandler.NewAccessHandler(accesses),
 			requesthandler.NewRequestHandler(requests),
+			toolHandler,
 		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
