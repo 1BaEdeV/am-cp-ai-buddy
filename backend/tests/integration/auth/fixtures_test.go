@@ -30,6 +30,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 		}))
 
 	stmts := []string{
+		`CREATE TABLE access_requirements (id TEXT PRIMARY KEY, team_id TEXT NOT NULL, position_id TEXT NOT NULL)`,
 		`CREATE TABLE positions (id TEXT PRIMARY KEY, name TEXT NOT NULL)`,
 		`CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE mentors (id TEXT PRIMARY KEY, team_id TEXT NOT NULL, first_name TEXT NOT NULL, second_name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '')`,
@@ -85,6 +86,7 @@ func seedBase(t *testing.T, db *gorm.DB) fixtures {
 		ID: f.OtherManager, Email: "mgr2@example.com", FirstName: "Boss", SecondName: "Two",
 		PositionID: f.Pos1, TeamID: f.Team1, Role: models.RoleManager,
 	}).Error)
+	require.NoError(t, db.Exec(`INSERT INTO access_requirements (id, team_id, position_id) VALUES (?, ?, ?)`, "rule-intern", f.Team2, f.Pos2).Error)
 	return f
 }
 

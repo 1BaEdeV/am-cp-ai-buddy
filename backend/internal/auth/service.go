@@ -170,7 +170,12 @@ func registrationForm(tx *gorm.DB, employee models.Employee) (LoginResult, error
 	}
 
 	var positions []models.Position
-	if err := tx.Order("name, id").Find(&positions).Error; err != nil {
+	positionQuery := tx.Order("name, id")
+	if employee.Role == models.RoleIntern {
+		positionQuery = positionQuery.Where("id IN (?)", tx.Model(&models.AccessRequirement{}).
+			Select("position_id").Where("team_id = ?", employee.TeamID))
+	}
+	if err := positionQuery.Find(&positions).Error; err != nil {
 		return LoginResult{}, fmt.Errorf("загрузить должности: %w", err)
 	}
 	if len(positions) == 0 || (employee.Role == models.RoleIntern && len(team.Mentors) == 0) {
@@ -193,12 +198,15 @@ func registrationForm(tx *gorm.DB, employee models.Employee) (LoginResult, error
 		SecondName:      employee.SecondName,
 		Email:           employee.Email,
 		Role:            employee.Role,
-		PositionID:      employee.PositionID,
+		PositionID:      positions[0].ID,
 		Team:            teamOption,
 		PositionOptions: make([]Option, 0, len(positions)),
 	}
 	for _, position := range positions {
 		result.PositionOptions = append(result.PositionOptions, Option{ID: position.ID, Name: position.Name})
+		if position.ID == employee.PositionID {
+			result.PositionID = position.ID
+		}
 	}
 	return result, nil
 }
@@ -212,6 +220,14 @@ func createProfile(tx *gorm.DB, employee models.Employee, input RegistrationInpu
 	var team models.Team
 	if err := loadReference(tx, &team, "назначенная команда", "id = ?", employee.TeamID); err != nil {
 		return Profile{}, err
+	}
+	if employee.Role == models.RoleIntern {
+		// Наличие должности в общем справочнике не означает, что для неё готов план команды.
+		var requirement models.AccessRequirement
+		if err := loadReference(tx, &requirement, "правила доступов для команды и должности",
+			"team_id = ? AND position_id = ?", team.ID, position.ID); err != nil {
+			return Profile{}, err
+		}
 	}
 
 	profile := models.Profile{
