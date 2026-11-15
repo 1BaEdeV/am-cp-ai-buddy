@@ -1,0 +1,5 @@
+@font-face{font-family:Manrope;src:url('/fonts/manrope-400.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:Manrope;src:url('/fonts/manrope-600.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:Manrope;src:url('/fonts/manrope-700.woff2') format('woff2');font-weight:700;font-display:swap}
+:root{font-family:Manrope,Arial,sans-serif;color:#0f0f0f;background:#f7f7f7;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}body{margin:0}.welcome{max-width:600px;margin:10vh auto;text-align:center}.welcome img{width:250px}
