@@ -18,6 +18,13 @@ export default defineConfig(({ mode }) => {
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
       restoreMocks: true,
+      coverage: {
+        provider: 'v8',
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/lib/types.ts'],
+        reporter: ['text', 'html', 'json-summary'],
+        thresholds: { statements: 81, branches: 81, functions: 81, lines: 81 },
+      },
     },
   }
 })

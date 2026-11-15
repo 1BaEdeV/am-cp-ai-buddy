@@ -4,7 +4,8 @@
 
 The agent answers a trainee's questions about their team introduction or required
 work access. Go owns identity, authorization, database state, and request creation.
-The model only generates a text answer from the context supplied by Go.
+The model returns text and, for an explicit request for one resource, a draft
+intent. Go validates that intent and creates the draft.
 
 ## HTTP contract
 
@@ -32,13 +33,13 @@ tools that mutate application state and cannot approve requests.
 For a clear request for one named required access, it returns that resource's ID
 as an intent. The Go worker calls the same `PrepareAccessRequest` service used by
 the rest of the access flow and returns the checked draft in the assistant chat
-message. The trainee must explicitly confirm that draft before a request is
-created. Broad or ambiguous requests produce no draft intent. Go remains the
+message as `accessDraft`. The trainee must explicitly confirm that draft before
+a request is created. Broad or ambiguous requests produce no draft intent. Go remains the
 source of truth for all status and permission decisions.
 
 The Go backend separately exposes an authenticated internal tool API documented
-in `docs/ml-tools.md`. Wiring the Python agent to call those routes is not part
-of the current chat request path: the Go worker handles the draft intent itself.
+in [docs/ml-tools.md](../docs/ml-tools.md). Wiring the Python agent to call those
+routes is not part of the current chat path: Go handles the draft intent itself.
 
 ## Response rules
 
@@ -54,3 +55,13 @@ of the current chat request path: the Go worker handles the draft intent itself.
 If the ML endpoint is unavailable, times out, returns malformed data, or produces
 an empty answer, Go marks the chat run `failed` with a safe retry message. The user
 can retry using a new `Idempotency-Key`; the original run remains in history.
+
+## Run and test
+
+From `ml`, install `requirements.txt`, copy `.env.example` to `.env`, set
+`GEMINI_API_KEY`, then run `python main.py`. Defaults: `ML_HOST=127.0.0.1`,
+`ML_PORT=8090`, `GEMINI_MODEL=gemini-3.5-flash-lite`. The service loads `.env` itself.
+`DEMO_USER_ID` from the example is unused; identity and context come from Go.
+
+Run `python -m unittest discover -v` with the dependencies installed.
+The tests mock Gemini calls; they do not require a real key or measure live model quality.
