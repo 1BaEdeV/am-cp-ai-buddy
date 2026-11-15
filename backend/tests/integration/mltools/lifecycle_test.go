@@ -27,6 +27,7 @@ import (
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/mltools"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	demodata "github.com/1BaEdeV/am-cp-ai-buddy/backend/seeds/demo"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/tests/integration/testdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -38,16 +39,23 @@ const serviceToken = "integration-ml-service-token"
 
 func system(t *testing.T, enableTools bool) (http.Handler, *gorm.DB) {
 	t.Helper()
-	ctx := context.Background()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "ml.db")+"?_foreign_keys=on"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	pool, err := db.DB()
 	require.NoError(t, err)
 	pool.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	return systemWithDatabase(t, enableTools, db)
+}
+
+func systemWithDatabase(t *testing.T, enableTools bool, db *gorm.DB) (http.Handler, *gorm.DB) {
+	t.Helper()
+	ctx := context.Background()
 	require.NoError(t, appdb.Migrate(ctx, db))
-	require.NoError(t, db.Exec("CREATE UNIQUE INDEX test_ml_requests_id ON access_requests(id)").Error)
-	_, err = demoseed.Load(ctx, db, demodata.Files)
+	if db.Name() == "sqlite" {
+		require.NoError(t, db.Exec("CREATE UNIQUE INDEX test_ml_requests_id ON access_requests(id)").Error)
+	}
+	_, err := demoseed.Load(ctx, db, demodata.Files)
 	require.NoError(t, err)
 	accesses, requests, provider := access.NewService(db), accessrequest.NewService(db), demoprovider.NewProvider(db)
 	var tools handler.MLToolEndpoints
@@ -90,6 +98,16 @@ func tool(router http.Handler, name, body, employee string) *httptest.ResponseRe
 
 func TestMLToolsWithSeededDataAndBackgroundIssuance(t *testing.T) {
 	router, db := system(t, true)
+	checkMLLifecycle(t, router, db)
+}
+
+func TestPostgresMLToolsWithSeededDataAndBackgroundIssuance(t *testing.T) {
+	router, db := systemWithDatabase(t, true, testdb.Postgres(t))
+	checkMLLifecycle(t, router, db)
+}
+
+func checkMLLifecycle(t *testing.T, router http.Handler, db *gorm.DB) {
+	t.Helper()
 	w := send(router, http.MethodGet, "/api/v1/internal/ml/tools", "", "", serviceToken)
 	require.Equal(t, 200, w.Code)
 	var definitions []mltools.Definition
@@ -181,4 +199,60 @@ func TestMLRoutesEnforceServiceAndEmployeeBoundaries(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, send(router, http.MethodPost, "/api/v1/access-requests/drafts", `{"resourceId":"gitlab-search-api"}`, "intern-alina", "").Code)
 	disabled, _ := system(t, false)
 	assert.Equal(t, 404, tool(disabled, "get_role_tools", `{}`, "intern-alina").Code)
+}
+
+func TestPostgresRetryAfterLostProviderResponse(t *testing.T) {
+	router, db := systemWithDatabase(t, true, testdb.Postgres(t))
+	ctx := context.Background()
+	provider := demoprovider.NewProvider(db)
+	var resource models.Resource
+	require.NoError(t, db.Take(&resource, "id = ?", "gitlab-search-api").Error)
+	target := accessrequest.GrantTarget{EmployeeID: "intern-alina", Service: resource.Service, ExternalID: resource.ExternalID, AccessLevel: "Developer"}
+	require.NoError(t, provider.SetFailure(ctx, target, demoprovider.FailureAfterGrant))
+	w := tool(router, "prepare_access_request", `{"resourceId":"gitlab-search-api"}`, "intern-alina")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var preparation accessrequest.Preparation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &preparation))
+	require.NotNil(t, preparation.Draft)
+	w = send(router, http.MethodPost, "/api/v1/access-requests/drafts/"+preparation.Draft.ID+"/confirm", `{"confirmed":true}`, "intern-alina", "")
+	require.Equal(t, 201, w.Code, w.Body.String())
+	var request accessrequest.Request
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &request))
+	w = send(router, http.MethodPost, "/api/v1/access-requests/"+request.ID+"/decision", `{"decision":"approve"}`, "manager-dmitry", "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	awaitStatus := func(status models.AccessRequestStatus) {
+		t.Helper()
+		require.Eventually(t, func() bool {
+			w := tool(router, "get_access_request_status", `{"requestId":"`+request.ID+`"}`, "intern-alina")
+			var saved accessrequest.Request
+			return w.Code == 200 && json.Unmarshal(w.Body.Bytes(), &saved) == nil && saved.Status == status
+		}, 5*time.Second, 5*time.Millisecond)
+	}
+	awaitStatus(models.AccessRequestFailed)
+	actual, err := provider.CheckAccess(ctx, target)
+	require.NoError(t, err)
+	assert.True(t, actual.Granted, "провайдер выдал права до потери ответа")
+	card, err := access.NewService(db).ListRequiredAccesses(ctx, target.EmployeeID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, card.Progress.Completed, "неподтверждённый результат ещё не увеличивает прогресс")
+	w = tool(router, "prepare_access_request", `{"resourceId":"gitlab-search-api"}`, "intern-alina")
+	require.Equal(t, 200, w.Code)
+	var repeat accessrequest.Preparation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &repeat))
+	require.NotNil(t, repeat.Request)
+	assert.Equal(t, accessrequest.PreparationRequestExists, repeat.Status)
+	assert.Equal(t, request.ID, repeat.Request.ID)
+	w = send(router, http.MethodPost, "/api/v1/access-requests/"+request.ID+"/retry", `{}`, "manager-dmitry", "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	awaitStatus(models.AccessRequestGranted)
+	card, err = access.NewService(db).ListRequiredAccesses(ctx, target.EmployeeID)
+	require.NoError(t, err)
+	assert.Equal(t, 3, card.Progress.Completed)
+	var operations int64
+	require.NoError(t, db.Model(&models.DemoProviderOperation{}).Where("id = ?", request.ID).Count(&operations).Error)
+	assert.EqualValues(t, 1, operations, "повтор сначала проверяет права и не создаёт вторую выдачу")
+	var job models.AccessIssuanceJob
+	require.NoError(t, db.Take(&job, "request_id = ?", request.ID).Error)
+	assert.Equal(t, 2, job.Attempts)
+	assert.NotNil(t, job.CompletedAt)
 }

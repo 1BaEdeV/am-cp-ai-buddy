@@ -14,6 +14,7 @@ import (
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/demoseed"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	demodata "github.com/1BaEdeV/am-cp-ai-buddy/backend/seeds/demo"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/tests/integration/testdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -35,7 +36,20 @@ func database(t *testing.T) *gorm.DB {
 }
 
 func TestLoadDemoAndPreserveRuntimeState(t *testing.T) {
-	db, ctx := database(t), context.Background()
+	checkDemoAndRuntimeState(t, database(t))
+}
+
+func TestPostgresLoadDemoAndPreserveRuntimeState(t *testing.T) {
+	db := testdb.Postgres(t)
+	ctx := context.Background()
+	require.NoError(t, appdb.Migrate(ctx, db))
+	require.NoError(t, appdb.Migrate(ctx, db), "повторная миграция должна сохранять схему")
+	checkDemoAndRuntimeState(t, db)
+}
+
+func checkDemoAndRuntimeState(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	ctx := context.Background()
 	counts, err := demoseed.Load(ctx, db, demodata.Files)
 	require.NoError(t, err)
 	assert.Equal(t, 20, counts.Employees)
@@ -98,6 +112,26 @@ func TestLoadDemoAndPreserveRuntimeState(t *testing.T) {
 		require.NoError(t, db.Model(tt.model).Count(&count).Error)
 		assert.Equal(t, tt.count, count)
 	}
+}
+
+func TestPostgresLoadRollsBackProviderFailure(t *testing.T) {
+	db, ctx := testdb.Postgres(t), context.Background()
+	require.NoError(t, appdb.Migrate(ctx, db))
+	require.NoError(t, db.Exec(`CREATE FUNCTION fail_seed() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN RAISE EXCEPTION 'seed write failure'; END $$`).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER fail_seed BEFORE INSERT ON demo_provider_accesses
+		FOR EACH ROW EXECUTE FUNCTION fail_seed()`).Error)
+	counts, err := demoseed.Load(ctx, db, demodata.Files)
+	require.ErrorContains(t, err, "seed write failure")
+	assert.Empty(t, counts)
+	for _, model := range []any{&models.Team{}, &models.Employee{}, &models.Resource{}, &models.EmployeeAccess{}, &models.DemoProviderAccess{}} {
+		var count int64
+		require.NoError(t, db.Model(model).Count(&count).Error)
+		assert.Zero(t, count)
+	}
+	require.NoError(t, db.Exec("DROP TRIGGER fail_seed ON demo_provider_accesses").Error)
+	_, err = demoseed.Load(ctx, db, demodata.Files)
+	require.NoError(t, err)
 }
 
 func TestLoadRollsBackAllTablesOnFailure(t *testing.T) {
