@@ -75,7 +75,14 @@ func systemWithDatabase(t *testing.T, enableTools bool, db *gorm.DB) (http.Handl
 			t.Error("фоновый процесс не завершился")
 		}
 	})
-	return handler.NewRouter(authhandler.NewAuthHandler(auth.NewService(db)), accesshandler.NewAccessHandler(accesses), requesthandler.NewRequestHandler(requests), tools), db
+	return handler.NewRouter(
+		authhandler.NewAuthHandler(auth.NewService(db)),
+		nil,
+		nil,
+		accesshandler.NewAccessHandler(accesses),
+		requesthandler.NewRequestHandler(requests),
+		tools,
+	), db
 }
 
 func send(router http.Handler, method, path, body, employee, token string) *httptest.ResponseRecorder {

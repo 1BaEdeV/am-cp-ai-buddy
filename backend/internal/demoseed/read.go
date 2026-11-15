@@ -27,8 +27,9 @@ type Data struct {
 }
 
 type reference struct {
-	ID   string `yaml:"id"`
-	Name string `yaml:"name"`
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
 }
 
 type mentor struct {
@@ -36,6 +37,7 @@ type mentor struct {
 	TeamID     string `yaml:"team_id"`
 	FirstName  string `yaml:"first_name"`
 	SecondName string `yaml:"second_name"`
+	Contact    string `yaml:"contact"`
 }
 
 type employee struct {
@@ -90,7 +92,7 @@ func Read(files fs.FS) (Data, error) {
 		return Data{}, err
 	}
 	for _, r := range teams {
-		data.Teams = append(data.Teams, models.Team{ID: r.ID, Name: r.Name})
+		data.Teams = append(data.Teams, models.Team{ID: r.ID, Name: r.Name, Description: r.Description})
 	}
 	positions, err := decode[reference](files, "positions")
 	if err != nil {
@@ -104,7 +106,7 @@ func Read(files fs.FS) (Data, error) {
 		return Data{}, err
 	}
 	for _, r := range mentors {
-		data.Mentors = append(data.Mentors, models.Mentor{ID: r.ID, TeamID: r.TeamID, FirstName: r.FirstName, SecondName: r.SecondName})
+		data.Mentors = append(data.Mentors, models.Mentor{ID: r.ID, TeamID: r.TeamID, FirstName: r.FirstName, SecondName: r.SecondName, Contact: r.Contact})
 	}
 	employees, err := decode[employee](files, "employees")
 	if err != nil {

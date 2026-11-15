@@ -26,7 +26,7 @@ func (s accessStub) ListRequiredAccesses(ctx context.Context, employeeID string)
 }
 
 func newRouter(service accesshandler.AccessService) http.Handler {
-	return handler.NewRouter(authhandler.NewAuthHandler(nil), accesshandler.NewAccessHandler(service), nil)
+	return handler.NewRouter(authhandler.NewAuthHandler(nil), nil, nil, accesshandler.NewAccessHandler(service), nil)
 }
 
 func TestWorkingAccessesTask(t *testing.T) {

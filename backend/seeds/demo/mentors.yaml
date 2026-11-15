@@ -3,6 +3,7 @@ mentors:
     team_id: "team-search"
     first_name: "Катя"
     second_name: "Волкова"
+    contact: "katya.volkova@example.test"
 
   - id: "mentor-oleg"
     team_id: "team-web"

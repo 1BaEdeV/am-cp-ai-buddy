@@ -130,14 +130,14 @@ func (s *Service) claimIssuance(ctx context.Context) (*models.AccessIssuanceJob,
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := s.now().UTC()
 		issuing := tx.Model(&models.AccessRequest{}).Select("id").Where("status = ?", models.AccessRequestIssuing)
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+		result := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Where("completed_at IS NULL AND available_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", now, now).
-			Where("request_id IN (?)", issuing).Order("available_at, request_id").Take(&job).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
+			Where("request_id IN (?)", issuing).Order("available_at, request_id").Limit(1).Find(&job)
+		if result.Error != nil {
+			return fmt.Errorf("взять задание на выдачу доступа: %w", result.Error)
 		}
-		if err != nil {
-			return fmt.Errorf("взять задание на выдачу доступа: %w", err)
+		if result.RowsAffected == 0 {
+			return nil
 		}
 		until := now.Add(issuanceLease)
 		job.LeaseToken, job.LeaseUntil, job.Attempts = rand.Text(), &until, job.Attempts+1

@@ -8,10 +8,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// Migrate использует один набор таблиц для API и команды загрузки демо.
+// Migrate creates or updates every application table in one place so the API
+// and the demo-data command use the same schema.
 func Migrate(ctx context.Context, conn *gorm.DB) error {
 	if err := conn.WithContext(ctx).AutoMigrate(
 		&models.Position{}, &models.Team{}, &models.Mentor{}, &models.Employee{}, &models.Profile{},
+		&models.TeamIntroduction{}, &models.ChatMessage{}, &models.ChatRun{},
 		&models.Resource{}, &models.AccessRequirement{}, &models.EmployeeAccess{},
 		&models.AccessDraft{}, &models.AccessRequest{}, &models.AccessIssuanceJob{},
 		&models.DemoProviderAccess{}, &models.DemoProviderOperation{},

@@ -2,19 +2,30 @@ package handler
 
 import "net/http"
 
-// AuthEndpoints описывает HTTP-хэндлеры, необходимые роутеру.
 type AuthEndpoints interface {
 	Login(http.ResponseWriter, *http.Request)
 	Register(http.ResponseWriter, *http.Request)
 	Me(http.ResponseWriter, *http.Request)
 }
 
-// AccessEndpoints описывает HTTP-хэндлер карточки рабочих доступов.
+// OnboardingEndpoints describes the HTTP handlers for the onboarding plan.
+type OnboardingEndpoints interface {
+	GetTeamIntro(http.ResponseWriter, *http.Request)
+	GetPlan(http.ResponseWriter, *http.Request)
+	CompleteTeamIntro(http.ResponseWriter, *http.Request)
+	GetTaskDetails(http.ResponseWriter, *http.Request)
+}
+
+// ChatEndpoints describes the HTTP handlers for AI-buddy task chats.
+type ChatEndpoints interface {
+	GetTaskChat(http.ResponseWriter, *http.Request)
+	SendTaskChatMessage(http.ResponseWriter, *http.Request)
+}
+
 type AccessEndpoints interface {
 	GetWorkingAccesses(http.ResponseWriter, *http.Request)
 }
 
-// AccessRequestEndpoints описывает действия пользователя с подготовленными заявками.
 type AccessRequestEndpoints interface {
 	ConfirmDraft(http.ResponseWriter, *http.Request)
 	ListRequests(http.ResponseWriter, *http.Request)
@@ -23,17 +34,36 @@ type AccessRequestEndpoints interface {
 	RetryIssuance(http.ResponseWriter, *http.Request)
 }
 
-// MLToolEndpoints регистрируются только при настроенном сервисном токене ML.
+// MLToolEndpoints are registered only when a service token is configured.
 type MLToolEndpoints interface {
 	ListTools(http.ResponseWriter, *http.Request)
 	CallTool(http.ResponseWriter, *http.Request)
 }
 
-func NewRouter(authHandler AuthEndpoints, accessHandler AccessEndpoints, requestHandler AccessRequestEndpoints, toolHandlers ...MLToolEndpoints) http.Handler {
+// NewRouter registers auth, onboarding, chat, access, and optional ML tool routes.
+func NewRouter(
+	authHandler AuthEndpoints,
+	onboardingHandler OnboardingEndpoints,
+	chatHandler ChatEndpoints,
+	accessHandler AccessEndpoints,
+	requestHandler AccessRequestEndpoints,
+	toolHandlers ...MLToolEndpoints,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
 	mux.HandleFunc("GET /api/v1/me", authHandler.Me)
+
+	if onboardingHandler != nil {
+		mux.HandleFunc("GET /api/v1/onboarding/tasks/team-intro", onboardingHandler.GetTeamIntro)
+		mux.HandleFunc("GET /api/v1/onboarding", onboardingHandler.GetPlan)
+		mux.HandleFunc("POST /api/v1/onboarding/tasks/team-intro/complete", onboardingHandler.CompleteTeamIntro)
+		mux.HandleFunc("GET /api/v1/onboarding/tasks/{taskId}", onboardingHandler.GetTaskDetails)
+	}
+	if chatHandler != nil {
+		mux.HandleFunc("GET /api/v1/onboarding/tasks/{taskId}/chat", chatHandler.GetTaskChat)
+		mux.HandleFunc("POST /api/v1/onboarding/tasks/{taskId}/chat/messages", chatHandler.SendTaskChatMessage)
+	}
 	if accessHandler != nil {
 		mux.HandleFunc("GET /api/v1/onboarding/tasks/working-accesses", accessHandler.GetWorkingAccesses)
 	}

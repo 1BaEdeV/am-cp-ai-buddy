@@ -11,6 +11,7 @@ import (
 type Config struct {
 	HTTPAddr             string
 	DatabaseURL          string
+	MLAgentURL           string
 	IssuancePollInterval time.Duration
 	DemoSeedOnStartup    bool
 	MLToolsToken         string
@@ -21,6 +22,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:             strings.TrimSpace(os.Getenv("HTTP_ADDR")),
 		DatabaseURL:          strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		MLAgentURL:           strings.TrimSpace(os.Getenv("ML_AGENT_URL")),
 		IssuancePollInterval: 500 * time.Millisecond,
 		MLToolsToken:         strings.TrimSpace(os.Getenv("ML_TOOLS_TOKEN")),
 	}
@@ -29,6 +31,9 @@ func Load() (Config, error) {
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("задай DATABASE_URL для подключения к PostgreSQL")
+	}
+	if cfg.MLAgentURL == "" {
+		cfg.MLAgentURL = "http://localhost:8090/chat"
 	}
 	if value := strings.TrimSpace(os.Getenv("ISSUANCE_POLL_INTERVAL")); value != "" {
 		interval, err := time.ParseDuration(value)

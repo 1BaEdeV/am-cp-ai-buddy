@@ -31,9 +31,10 @@ type Position struct {
 
 // Team — назначенная сотруднику команда из справочника. По ней подбираются наставники.
 type Team struct {
-	ID      string `gorm:"primaryKey"`
-	Name    string `gorm:"not null"`
-	Mentors []Mentor
+	ID          string `gorm:"primaryKey"`
+	Name        string `gorm:"not null"`
+	Description string `gorm:"not null;default:''"`
+	Mentors     []Mentor
 }
 
 // Mentor — наставник, закреплённый за одной командой.
@@ -42,6 +43,7 @@ type Mentor struct {
 	TeamID     string `gorm:"not null;index"`
 	FirstName  string `gorm:"not null"`
 	SecondName string `gorm:"not null"`
+	Contact    string `gorm:"not null;default:''"`
 }
 
 // Profile — профиль сотрудника в приложении. Для стажёра хранит наставника

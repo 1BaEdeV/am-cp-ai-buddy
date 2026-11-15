@@ -1,0 +1,130 @@
+package onboarding
+
+import (
+	"errors"
+	"log/slog"
+	"net/http"
+	"strings"
+
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/onboarding"
+)
+
+const demoEmployeeHeader = "X-Demo-Employee-Id"
+
+type OnboardingHandler struct {
+	service *onboarding.Service
+}
+
+func NewOnboardingHandler(service *onboarding.Service) *OnboardingHandler {
+	return &OnboardingHandler{service: service}
+}
+
+func (h *OnboardingHandler) GetTeamIntro(w http.ResponseWriter, r *http.Request) {
+	employeeID := strings.TrimSpace(r.Header.Get(demoEmployeeHeader))
+	if employeeID == "" {
+		handler.WriteAPIError(
+			w,
+			http.StatusUnauthorized,
+			"demo_identity_required",
+			"Введи демо-почту или внутренний ID.",
+		)
+		return
+	}
+
+	task, err := h.service.GetTeamIntro(r.Context(), employeeID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	handler.WriteJSON(w, http.StatusOK, task)
+}
+
+func (h *OnboardingHandler) writeError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, onboarding.ErrInternNotFound):
+		handler.WriteAPIError(w, http.StatusNotFound, "intern_not_found", "Стажёр не найден.")
+	case errors.Is(err, onboarding.ErrForbidden):
+		handler.WriteAPIError(w, http.StatusForbidden, "forbidden", "Карточка доступна только стажёру.")
+	case errors.Is(err, onboarding.ErrProfileNotFound):
+		handler.WriteAPIError(w, http.StatusForbidden, "profile_required", "Сначала заполни профиль.")
+	case errors.Is(err, onboarding.ErrInvalidTask):
+		handler.WriteAPIError(w, http.StatusNotFound, "task_not_found", "Пункт плана не найден.")
+	default:
+		slog.ErrorContext(r.Context(), "получить карточку знакомства", "error", err)
+		handler.WriteAPIError(w, http.StatusInternalServerError, "internal_error", "Не удалось загрузить карточку.")
+	}
+}
+
+func (h *OnboardingHandler) GetPlan(w http.ResponseWriter, r *http.Request) {
+	employeeID := strings.TrimSpace(r.Header.Get(demoEmployeeHeader))
+	if employeeID == "" {
+		handler.WriteAPIError(
+			w,
+			http.StatusUnauthorized,
+			"demo_identity_required",
+			"Введи демо-почту или внутренний ID.",
+		)
+		return
+	}
+
+	plan, err := h.service.GetPlan(r.Context(), employeeID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	handler.WriteJSON(w, http.StatusOK, plan)
+}
+
+
+func (h *OnboardingHandler) CompleteTeamIntro(w http.ResponseWriter, r *http.Request) {
+	employeeID := strings.TrimSpace(r.Header.Get(demoEmployeeHeader))
+	if employeeID == "" {
+		handler.WriteAPIError(
+			w,
+			http.StatusUnauthorized,
+			"demo_identity_required",
+			"Введи демо-почту или внутренний ID.",
+		)
+		return
+	}
+
+	err := h.service.CompleteTeamIntro(r.Context(), employeeID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	plan, err := h.service.GetPlan(r.Context(), employeeID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	handler.WriteJSON(w, http.StatusOK, plan)
+}
+
+
+func (h *OnboardingHandler) GetTaskDetails(w http.ResponseWriter, r *http.Request) {
+	employeeID := strings.TrimSpace(r.Header.Get(demoEmployeeHeader))
+	if employeeID == "" {
+		handler.WriteAPIError(
+			w,
+			http.StatusUnauthorized,
+			"demo_identity_required",
+			"Введи демо-почту или внутренний ID.",
+		)
+		return
+	}
+
+	taskID := r.PathValue("taskId")
+	task, err := h.service.GetTaskDetails(r.Context(), employeeID, taskID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	handler.WriteJSON(w, http.StatusOK, task)
+}

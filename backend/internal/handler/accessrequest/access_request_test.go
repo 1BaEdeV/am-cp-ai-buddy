@@ -46,7 +46,7 @@ func (s requestStub) RetryAccessIssuance(ctx context.Context, actor, id string) 
 }
 
 func requestRouter(service requesthandler.RequestService) http.Handler {
-	return handler.NewRouter(authhandler.NewAuthHandler(nil), nil, requesthandler.NewRequestHandler(service))
+	return handler.NewRouter(authhandler.NewAuthHandler(nil), nil, nil, nil, requesthandler.NewRequestHandler(service))
 }
 
 func send(router http.Handler, method, path, body, actor string) *httptest.ResponseRecorder {
