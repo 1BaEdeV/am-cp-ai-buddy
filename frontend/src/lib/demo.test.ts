@@ -1,7 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { demoClient as client, resetDemo } from './demo'
 
-const intern = 'intern-alina', manager = 'manager-dmitry'
+const intern = 'intern-alina',
+  manager = 'manager-dmitry'
 async function prepare(resource = 'gitlab-search-api') {
   await client.sendMessage(intern, 'working-accesses', 'Запроси доступ', resource)
   const chat = await client.chat(intern, 'working-accesses')
@@ -36,14 +37,22 @@ describe('Демо-сценарий доступов', () => {
   })
   it('сохраняет отказ, разрешает новый черновик и защищает чужую заявку', async () => {
     const request = await client.confirm(intern, (await prepare()).id)
-    await expect(client.decide(manager, request.id, 'reject', ' ')).rejects.toMatchObject({ status: 400 })
+    await expect(client.decide(manager, request.id, 'reject', ' ')).rejects.toMatchObject({
+      status: 400,
+    })
     await client.decide(manager, request.id, 'reject', 'Уточни назначение')
     expect((await client.request(intern, request.id)).decisionReason).toBe('Уточни назначение')
     await expect(client.request('manager-anna', request.id)).rejects.toMatchObject({ status: 404 })
-    await expect(client.decide(intern, request.id, 'approve', '')).rejects.toMatchObject({ status: 403 })
+    await expect(client.decide(intern, request.id, 'approve', '')).rejects.toMatchObject({
+      status: 403,
+    })
     const replacement = await client.confirm(intern, (await prepare()).id)
     expect(replacement.id).not.toBe(request.id)
-    expect((await client.requests(intern)).counts).toMatchObject({ active: 1, completed: 1, rejected: 1 })
+    expect((await client.requests(intern)).counts).toMatchObject({
+      active: 1,
+      completed: 1,
+      rejected: 1,
+    })
   })
   it('не подтверждает истёкший черновик и не готовит дубль активной заявки', async () => {
     vi.useFakeTimers()
@@ -61,10 +70,22 @@ describe('Демо-сценарий доступов', () => {
   it('разделяет переписку по заданиям и пользователей по командам', async () => {
     await client.sendMessage(intern, 'team-intro', 'Кто мой наставник?')
     expect((await client.chat(intern, 'working-accesses')).messages).toHaveLength(0)
-    expect((await client.chat(intern, 'team-intro')).messages.at(-1)?.text).toContain('Катя Волкова')
-    await client.register('intern-ivan', { positionId: 'position-frontend', mentorId: 'mentor-oleg', internshipStartDate: '2026-11-15' })
-    expect((await client.accesses('intern-ivan')).resources.map(r => r.id)).toContain('figma-design')
-    expect((await client.accesses('intern-ivan')).resources.map(r => r.id)).not.toContain('gitlab-search-api')
-    await expect(client.confirm('intern-ivan', (await prepare()).id)).rejects.toMatchObject({ status: 404 })
+    expect((await client.chat(intern, 'team-intro')).messages.at(-1)?.text).toContain(
+      'Катя Волкова',
+    )
+    await client.register('intern-ivan', {
+      positionId: 'position-frontend',
+      mentorId: 'mentor-oleg',
+      internshipStartDate: '2026-11-15',
+    })
+    expect((await client.accesses('intern-ivan')).resources.map((r) => r.id)).toContain(
+      'figma-design',
+    )
+    expect((await client.accesses('intern-ivan')).resources.map((r) => r.id)).not.toContain(
+      'gitlab-search-api',
+    )
+    await expect(client.confirm('intern-ivan', (await prepare()).id)).rejects.toMatchObject({
+      status: 404,
+    })
   })
 })
