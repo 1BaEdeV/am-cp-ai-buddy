@@ -23,7 +23,7 @@ describe('HTTP-контракт frontend', () => {
     expect(await client.intro('intern')).toEqual({ description: 'Команда' })
   })
   it('читает карточку, план и чат; отправляет решение, повтор выдачи и завершение знакомства', async () => {
-    const fetch = vi.fn().mockImplementation(async () => new Response('{}'))
+    const fetch = vi.fn().mockImplementation(async () => new Response('{"messages":[]}'))
     vi.stubGlobal('fetch', fetch)
     await client.request('manager', 'request/1')
     await client.decide('manager', 'request/1', 'reject', 'Уточни цель')
