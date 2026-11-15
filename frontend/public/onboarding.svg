@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 310 220" fill="none" aria-hidden="true">
+  <ellipse cx="161" cy="194" rx="122" ry="13" fill="#b9e5fe"/>
+  <circle cx="169" cy="109" r="89" fill="#d3efff"/>
+  <path d="M31 132c14-14 25 8 38 0m163 24c13-14 26 4 41-10" stroke="#78ccfb" stroke-width="4" stroke-linecap="round" stroke-dasharray="3 8"/>
+  <g transform="translate(95 29) rotate(10 70 79)">
+    <rect x="8" y="9" width="139" height="161" rx="23" fill="#75caff"/>
+    <rect width="139" height="161" rx="23" fill="white"/>
+    <rect x="17" y="18" width="64" height="9" rx="4.5" fill="#1c2740"/>
+    <rect x="17" y="44" width="104" height="26" rx="9" fill="#eff9dd"/>
+    <circle cx="31" cy="57" r="7" fill="#97cf26"/><path d="m28 57 2 2 4-4" stroke="#284908" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="46" y="54" width="57" height="6" rx="3" fill="#b2cf8b"/>
+    <rect x="17" y="80" width="104" height="26" rx="9" fill="#e7f6ff"/>
+    <circle cx="31" cy="93" r="7" fill="#00aaff"/><rect x="46" y="90" width="43" height="6" rx="3" fill="#8acaf0"/>
+    <rect x="17" y="116" width="104" height="26" rx="9" fill="#f2f2f2"/>
+    <circle cx="31" cy="129" r="7" fill="#dddde2"/><rect x="46" y="126" width="51" height="6" rx="3" fill="#d9d9df"/>
+  </g>
+  <g transform="translate(43 86) rotate(-12 33 29)">
+    <path d="M1 18A17 17 0 0 1 18 1h32a17 17 0 0 1 17 17v14a17 17 0 0 1-17 17H23L11 58l1-11A17 17 0 0 1 1 32Z" fill="#a169f7"/>
+    <path d="M34 10l4.3 10.7L49 25l-10.7 4.3L34 40l-4.3-10.7L19 25l10.7-4.3L34 10Z" fill="white"/>
+  </g>
+  <path d="m252 36 5 11 12 4-12 4-5 11-4-11-12-4 12-4Z" fill="#ff8292"/>
+  <circle cx="74" cy="43" r="6" fill="#97cf26"/><circle cx="265" cy="107" r="7" fill="#a169f7"/>
+</svg>
