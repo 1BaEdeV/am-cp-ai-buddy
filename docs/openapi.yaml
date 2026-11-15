@@ -6,10 +6,9 @@ info:
     HTTP API для MVP адаптации стажёра.
     Стажёр знакомится с командой и получает все обязательные доступы.
     Руководитель рассматривает заявки, назначенные ему на согласование.
-    Реализованы Auth, карточка GET /onboarding/tasks/working-accesses,
-    AccessRequests и MLTools. Остальные маршруты плана, знакомства и чата —
-    целевой контракт; они помечены x-implementation-status: planned и пока
-    не зарегистрированы в Go API.
+    Реализованы вход, профиль, план, знакомство, чаты, рабочие доступы и заявки.
+    Вопросы чата обрабатывает Go-worker через HTTP ML-сервис.
+    Внутренние ML-инструменты доступны при заданном ML_TOOLS_TOKEN.
 servers:
   - url: http://localhost:8080/api/v1
     description: Адрес локального бэкенда
@@ -198,7 +197,6 @@ paths:
 
   /onboarding:
     get:
-      x-implementation-status: planned
       tags: [Onboarding]
       operationId: getOnboardingPlan
       summary: Загрузить экран «Мой план»
@@ -233,6 +231,28 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /onboarding/tasks/team-intro:
+    get:
+      tags: [Onboarding]
+      operationId: getTeamIntro
+      summary: Получить карточку знакомства
+      description: Доступно стажёру с заполненным профилем. Возвращает данные команды, руководителя и наставника.
+      responses:
+        '200':
+          description: Карточка этапа с вложенным teamIntro.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /onboarding/tasks/working-accesses:
     get:
       tags: [Onboarding]
@@ -261,7 +281,6 @@ paths:
     parameters:
       - $ref: '#/components/parameters/TaskId'
     get:
-      x-implementation-status: planned
       tags: [Onboarding]
       operationId: getOnboardingTask
       summary: Открыть пункт плана
@@ -353,7 +372,6 @@ paths:
 
   /onboarding/tasks/team-intro/complete:
     post:
-      x-implementation-status: planned
       tags: [Onboarding]
       operationId: completeTeamIntro
       summary: Отметить знакомство
@@ -374,7 +392,6 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ChatTaskId'
     get:
-      x-implementation-status: planned
       tags: [Chat]
       operationId: getTaskChat
       summary: Получить историю чата и статус последнего ответа
@@ -413,7 +430,6 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ChatTaskId'
     post:
-      x-implementation-status: planned
       tags: [Chat]
       operationId: sendTaskChatMessage
       summary: Отправить вопрос AI-buddy
