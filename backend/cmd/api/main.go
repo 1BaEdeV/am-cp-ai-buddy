@@ -2,26 +2,55 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/access"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/accessrequest"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/auth"
 	chatservice "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/config"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/db"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/demoprovider"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler"
+	accesshandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/access"
+	requesthandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/accessrequest"
 	authhandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/auth"
 	chathandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/chat"
 	onboardinghandler "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/handler/onboarding"
-	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/issuanceworker"
 	onboardingservice "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/onboarding"
 )
+
+type applicationWorkers struct {
+	chat     *chatservice.Service
+	issuance interface {
+		Run(context.Context)
+	}
+}
+
+func (w applicationWorkers) Run(ctx context.Context) {
+	var workers sync.WaitGroup
+	workers.Add(2)
+
+	go func() {
+		defer workers.Done()
+		w.chat.RunWorker(ctx, time.Second)
+	}()
+
+	go func() {
+		defer workers.Done()
+		w.issuance.Run(ctx)
+	}()
+
+	workers.Wait()
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -58,40 +87,42 @@ func run() error {
 		}
 	}()
 
-
 	migrationCtx, cancelMigration := context.WithTimeout(ctx, time.Minute)
-	err = conn.WithContext(migrationCtx).AutoMigrate(
-		&models.Position{},
-		&models.Team{},
-		&models.Mentor{},
-		&models.Employee{},
-		&models.Profile{},
-		&models.TeamIntroduction{},
-		&models.ChatMessage{},
-		&models.ChatRun{},
-	)
+	err = db.Migrate(migrationCtx, conn)
 	cancelMigration()
 	if err != nil {
-		return fmt.Errorf("подготовить таблицы: %w", err)
+		return fmt.Errorf("подготовить таблицы приложения: %w", err)
 	}
-	slog.Info("таблицы базы данных готовы")
+	slog.Info("таблицы приложения готовы")
 
-	chatService := chatservice.NewService(conn)
+	accesses := access.NewService(conn)
+	requests := accessrequest.NewService(conn)
+	issuance, err := issuanceworker.NewWorker(
+		requests,
+		demoprovider.NewProvider(conn),
+		cfg.IssuancePollInterval,
+		slog.Default(),
+	)
+	if err != nil {
+		return err
+	}
 
-	authHTTPHandler := authhandler.NewAuthHandler(
-		auth.NewService(conn),
+	onboardingService := onboardingservice.NewServiceWithReaders(conn, accesses, requests)
+	chatService := chatservice.NewService(
+		conn,
+		chatservice.NewHTTPAgent(cfg.MLAgentURL, &http.Client{Timeout: 50 * time.Second}),
+		chatservice.NewAppContextBuilder(onboardingService, accesses, requests),
+		requests,
 	)
-	onboardingHTTPHandler := onboardinghandler.NewOnboardingHandler(
-		onboardingservice.NewService(conn),
-	)
-	chatHTTPHandler := chathandler.NewChatHandler(chatService)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: handler.NewRouter(
-			authHTTPHandler,
-			onboardingHTTPHandler,
-			chatHTTPHandler,
+			authhandler.NewAuthHandler(auth.NewService(conn)),
+			onboardinghandler.NewOnboardingHandler(onboardingService),
+			chathandler.NewChatHandler(chatService),
+			accesshandler.NewAccessHandler(accesses),
+			requesthandler.NewRequestHandler(requests),
 		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
@@ -99,36 +130,9 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 	}
 
-
-	go chatService.RunWorker(ctx, time.Second)
-
-	serverErrors := make(chan error, 1)
-	go func() {
-		slog.Info("HTTP-сервер запускается", "addr", cfg.HTTPAddr)
-		serverErrors <- server.ListenAndServe()
-	}()
-
-	select {
-	case err := <-serverErrors:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return fmt.Errorf("запустить HTTP-сервер: %w", err)
-
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(
-			context.Background(),
-			10*time.Second,
-		)
-		defer cancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			return errors.Join(
-				fmt.Errorf("остановить HTTP-сервер: %w", err),
-				server.Close(),
-			)
-		}
-
-		return nil
-	}
+	slog.Info("HTTP-сервер запускается", "addr", cfg.HTTPAddr)
+	return serve(ctx, server, applicationWorkers{
+		chat:     chatService,
+		issuance: issuance,
+	})
 }

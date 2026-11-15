@@ -38,24 +38,26 @@ func newRouter(service authhandler.AuthService) http.Handler {
 		authhandler.NewAuthHandler(service),
 		onboardingStub{},
 		chatStub{},
-		
-		
+		nil,
+		nil,
 	)
 }
-func (chatStub) SendTaskChatMessage(http.ResponseWriter, *http.Request) {}
+
 type chatStub struct{}
+
+func (chatStub) SendTaskChatMessage(http.ResponseWriter, *http.Request) {}
+func (chatStub) GetTaskChat(http.ResponseWriter, *http.Request)         {}
+
+type onboardingStub struct{}
+
 func (onboardingStub) GetTaskDetails(
 	http.ResponseWriter,
 	*http.Request,
 ) {
 }
-func (chatStub) GetTaskChat(http.ResponseWriter, *http.Request) {}
 func (onboardingStub) CompleteTeamIntro(http.ResponseWriter, *http.Request) {}
-
-type onboardingStub struct{}
-
-func (onboardingStub) GetPlan(http.ResponseWriter, *http.Request)      {}
-func (onboardingStub) GetTeamIntro(http.ResponseWriter, *http.Request) {}
+func (onboardingStub) GetPlan(http.ResponseWriter, *http.Request)           {}
+func (onboardingStub) GetTeamIntro(http.ResponseWriter, *http.Request)      {}
 
 func request(router http.Handler, method, path, body, employeeID string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))

@@ -2,35 +2,43 @@ package chat
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"crypto/rand"
 	"strings"
 	"time"
 	"unicode/utf8"
-	
-	
-	"gorm.io/gorm/clause"
+
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/accessrequest"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
-	ErrEmployeeNotFound = errors.New("сотрудник не найден")
-	ErrForbidden        = errors.New("чат доступен только стажёру")
-	ErrProfileRequired  = errors.New("сначала заполни профиль")
-	ErrInvalidTask      = errors.New("неизвестный этап чата")
-	ErrInvalidMessage      = errors.New("проверь текст вопроса и ключ повтора")
-	ErrChatBusy            = errors.New("в этом чате уже готовится ответ")
+	ErrEmployeeNotFound     = errors.New("сотрудник не найден")
+	ErrForbidden            = errors.New("чат доступен только стажёру")
+	ErrProfileRequired      = errors.New("сначала заполни профиль")
+	ErrInvalidTask          = errors.New("неизвестный этап чата")
+	ErrInvalidMessage       = errors.New("проверь текст вопроса и ключ повтора")
+	ErrChatBusy             = errors.New("в этом чате уже готовится ответ")
 	ErrIdempotencyKeyReused = errors.New("ключ повтора уже использован для другого текста")
 )
 
 type Service struct {
-	db *gorm.DB
+	db       *gorm.DB
+	agent    Agent
+	context  ContextBuilder
+	requests accessRequestPreparer
 }
 
-func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+type accessRequestPreparer interface {
+	PrepareAccessRequest(context.Context, string, string) (accessrequest.Preparation, error)
+}
+
+func NewService(db *gorm.DB, agent Agent, contextBuilder ContextBuilder, requests accessRequestPreparer) *Service {
+	return &Service{db: db, agent: agent, context: contextBuilder, requests: requests}
 }
 
 func (s *Service) GetTaskChat(
@@ -90,6 +98,13 @@ func (s *Service) GetTaskChat(
 			ReplyToMessageID: stored.ReplyToMessageID,
 			SourceLabel:      stored.SourceLabel,
 		})
+		if stored.AccessDraftJSON != nil {
+			var draft accessrequest.Draft
+			if err := json.Unmarshal([]byte(*stored.AccessDraftJSON), &draft); err != nil {
+				return TaskChat{}, fmt.Errorf("прочитать черновик из сообщения: %w", err)
+			}
+			result.Messages[len(result.Messages)-1].AccessDraft = &draft
+		}
 	}
 
 	var storedRun models.ChatRun
@@ -118,7 +133,6 @@ func (s *Service) GetTaskChat(
 
 	return result, nil
 }
-
 
 func (s *Service) SendMessage(
 	ctx context.Context,

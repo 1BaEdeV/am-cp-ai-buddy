@@ -3,11 +3,14 @@ package chat
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/accessrequest"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -116,9 +119,85 @@ func (s *Service) ProcessNextRun(ctx context.Context) (bool, error) {
 		)
 	}
 
-	// Временный ответ. Позже вместо него подключим ML-агента.
+	if s.agent == nil || s.context == nil {
+		err := errors.New("ML assistant or task context is not configured")
+		return true, errors.Join(err, s.failRun(ctx, run))
+	}
+	appContext, err := s.context.Build(ctx, run.EmployeeID, run.TaskID)
+	if err != nil {
+		return true, errors.Join(fmt.Errorf("подготовить контекст AI-buddy: %w", err), s.failRun(ctx, run))
+	}
+	var historyRows []models.ChatMessage
+	err = s.db.WithContext(ctx).
+		Where("employee_id = ? AND task_id = ? AND created_at <= ?", run.EmployeeID, run.TaskID, userMessage.CreatedAt).
+		Order("created_at ASC").
+		Order("id ASC").
+		Find(&historyRows).Error
+	if err != nil {
+		return true, errors.Join(fmt.Errorf("загрузить историю чата: %w", err), s.failRun(ctx, run))
+	}
+	if len(historyRows) > 20 {
+		historyRows = historyRows[len(historyRows)-20:]
+	}
+	history := make([]Message, 0, len(historyRows))
+	for _, row := range historyRows {
+		history = append(history, Message{ID: row.ID, Role: row.Role, Text: row.Text, CreatedAt: row.CreatedAt})
+	}
+	agentCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	answer, err := s.agent.Reply(agentCtx, AgentRequest{
+		TaskID: run.TaskID, Question: userMessage.Text, History: history, Context: appContext,
+	})
+	cancel()
+	if err != nil {
+		return true, errors.Join(fmt.Errorf("получить ответ AI-buddy: %w", err), s.failRun(ctx, run))
+	}
+	if strings.TrimSpace(answer.Text) == "" {
+		return true, errors.Join(errors.New("AI-buddy вернул пустой ответ"), s.failRun(ctx, run))
+	}
+	var accessDraft *accessrequest.Draft
+	var accessDraftJSON *string
+	if resourceID := strings.TrimSpace(answer.PrepareAccessRequestResourceID); resourceID != "" {
+		if run.TaskID != "working-accesses" || s.requests == nil {
+			return true, errors.Join(errors.New("не настроена подготовка черновика доступа"), s.failRun(ctx, run))
+		}
+		preparation, err := s.requests.PrepareAccessRequest(ctx, run.EmployeeID, resourceID)
+		if err != nil {
+			if errors.Is(err, accessrequest.ErrInvalidInput) || errors.Is(err, accessrequest.ErrResourceNotRequired) {
+				answer.Text = "Не получилось определить этот обязательный ресурс. Выбери его в карточке рабочих доступов и попроси подготовить черновик ещё раз."
+				resourceID = ""
+			} else {
+				return true, errors.Join(fmt.Errorf("подготовить черновик доступа: %w", err), s.failRun(ctx, run))
+			}
+		}
+		if resourceID != "" {
+			switch preparation.Status {
+			case accessrequest.PreparationReady:
+				if preparation.Draft == nil {
+					return true, errors.Join(errors.New("сервис не вернул подготовленный черновик"), s.failRun(ctx, run))
+				}
+				accessDraft = preparation.Draft
+				encoded, err := json.Marshal(accessDraft)
+				if err != nil {
+					return true, errors.Join(fmt.Errorf("сериализовать черновик доступа: %w", err), s.failRun(ctx, run))
+				}
+				value := string(encoded)
+				accessDraftJSON = &value
+				answer.Text = strings.TrimSpace(answer.Text) + "\n\nПодготовил черновик доступа. Проверь его и подтверди отправку."
+			case accessrequest.PreparationAlreadyGranted:
+				answer.Text = "Этот обязательный доступ уже выдан. Проверь его статус в карточке рабочих доступов."
+			case accessrequest.PreparationRequestExists:
+				answer.Text = "По этому ресурсу уже есть активная заявка. Посмотри её статус в разделе «Мои заявки»."
+			default:
+				return true, errors.Join(fmt.Errorf("неизвестный результат подготовки черновика: %q", preparation.Status), s.failRun(ctx, run))
+			}
+		}
+	}
+
 	replyTo := userMessage.ID
-	sourceLabel := "Тестовый ответ"
+	sourceLabel := "Карточка команды"
+	if run.TaskID == "working-accesses" {
+		sourceLabel = "Карточка рабочих доступов"
+	}
 	now := time.Now().UTC()
 
 	assistantMessage := models.ChatMessage{
@@ -126,10 +205,11 @@ func (s *Service) ProcessNextRun(ctx context.Context) (bool, error) {
 		EmployeeID:       run.EmployeeID,
 		TaskID:           run.TaskID,
 		Role:             "assistant",
-		Text:             "Это тестовый ответ AI-buddy. Позже здесь будет ответ ML-агента.",
+		Text:             strings.TrimSpace(answer.Text),
 		CreatedAt:        now,
 		ReplyToMessageID: &replyTo,
 		SourceLabel:      &sourceLabel,
+		AccessDraftJSON:  accessDraftJSON,
 	}
 
 	// Сохраняем ответ и завершаем обработку одной транзакцией.

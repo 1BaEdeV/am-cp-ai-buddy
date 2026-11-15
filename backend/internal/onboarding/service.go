@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gorm.io/gorm/clause"
 	"strings"
 	"time"
-	"gorm.io/gorm/clause"
 
+	accessservice "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/access"
+	accessrequest "github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/accessrequest"
+	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/auth"
 	"github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -18,15 +21,33 @@ var (
 	ErrProfileNotFound = errors.New("профиль стажёра не найден")
 	ErrManagerNotFound = errors.New("руководитель команды не найден")
 	ErrMentorNotFound  = errors.New("у стажёра не выбран наставник")
-	ErrInvalidTask = errors.New("неизвестный этап адаптации")
+	ErrInvalidTask     = errors.New("неизвестный этап адаптации")
 )
 
 type Service struct {
-	db *gorm.DB
+	db             *gorm.DB
+	accesses       RequiredAccessesReader
+	accessRequests AccessRequestsReader
+}
+
+// RequiredAccessesReader supplies the current access state for a trainee.
+type RequiredAccessesReader interface {
+	ListRequiredAccesses(context.Context, string) (accessservice.WorkingAccesses, error)
+}
+
+// AccessRequestsReader supplies the trainee's request counters.
+type AccessRequestsReader interface {
+	ListAccessRequests(context.Context, string, accessrequest.RequestFilter) (accessrequest.RequestList, error)
 }
 
 func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+	return NewServiceWithReaders(db, accessservice.NewService(db), accessrequest.NewService(db))
+}
+
+// NewServiceWithReaders wires the onboarding plan to the same access services
+// used by the access endpoints.
+func NewServiceWithReaders(db *gorm.DB, accesses RequiredAccessesReader, requests AccessRequestsReader) *Service {
+	return &Service{db: db, accesses: accesses, accessRequests: requests}
 }
 
 func (s *Service) GetTeamIntro(
@@ -133,6 +154,59 @@ func (s *Service) loadTeamIntroPeople(
 
 func fullName(firstName, secondName string) string {
 	return strings.TrimSpace(firstName + " " + secondName)
+}
+
+func (s *Service) workingAccesses(ctx context.Context, employeeID string) (WorkingAccesses, error) {
+	current, err := s.accesses.ListRequiredAccesses(ctx, employeeID)
+	if err != nil {
+		return WorkingAccesses{}, mapAccessError(err)
+	}
+	result := WorkingAccesses{
+		Resources: make([]AccessResource, 0, len(current.Resources)),
+		Progress: Progress{
+			Completed:  current.Progress.Completed,
+			Total:      current.Progress.Total,
+			InProgress: current.Progress.InProgress,
+			Failed:     current.Progress.Failed,
+		},
+	}
+	for _, resource := range current.Resources {
+		item := AccessResource{
+			ID: resource.ID, Service: resource.Service, Name: resource.Name,
+			AccessLevel: resource.AccessLevel, Purpose: resource.Purpose,
+			Status: string(resource.Status), CanRequest: resource.CanRequest,
+		}
+		if resource.Request != nil {
+			item.RequestID = resource.Request.ID
+		}
+		result.Resources = append(result.Resources, item)
+	}
+	return result, nil
+}
+
+func (s *Service) accessRequestSummary(ctx context.Context, employeeID string) (AccessRequestSummary, error) {
+	requests, err := s.accessRequests.ListAccessRequests(ctx, employeeID, accessrequest.RequestFilter{})
+	if err != nil {
+		return AccessRequestSummary{}, mapAccessError(err)
+	}
+	return AccessRequestSummary{
+		Pending:    int(requests.Counts.Pending),
+		InProgress: int(requests.Counts.Pending + requests.Counts.Issuing),
+		Processed:  int(requests.Counts.Granted + requests.Counts.Rejected + requests.Counts.Failed),
+	}, nil
+}
+
+func mapAccessError(err error) error {
+	switch {
+	case errors.Is(err, auth.ErrEmployeeNotFound):
+		return fmt.Errorf("%w: %v", ErrInternNotFound, err)
+	case errors.Is(err, auth.ErrForbidden):
+		return fmt.Errorf("%w: %v", ErrForbidden, err)
+	case errors.Is(err, auth.ErrProfileRequired):
+		return fmt.Errorf("%w: %v", ErrProfileNotFound, err)
+	default:
+		return err
+	}
 }
 
 func (s *Service) CompleteTeamIntro(ctx context.Context, employeeID string) error {
