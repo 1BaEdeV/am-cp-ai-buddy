@@ -199,11 +199,11 @@ func (s *Service) accessRequestSummary(ctx context.Context, employeeID string) (
 func mapAccessError(err error) error {
 	switch {
 	case errors.Is(err, auth.ErrEmployeeNotFound):
-		return fmt.Errorf("%w: %v", ErrInternNotFound, err)
+		return fmt.Errorf("%w: %w", ErrInternNotFound, err)
 	case errors.Is(err, auth.ErrForbidden):
-		return fmt.Errorf("%w: %v", ErrForbidden, err)
+		return fmt.Errorf("%w: %w", ErrForbidden, err)
 	case errors.Is(err, auth.ErrProfileRequired):
-		return fmt.Errorf("%w: %v", ErrProfileNotFound, err)
+		return fmt.Errorf("%w: %w", ErrProfileNotFound, err)
 	default:
 		return err
 	}

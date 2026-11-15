@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -40,7 +41,11 @@ func (a *HTTPAgent) Reply(ctx context.Context, input AgentRequest) (AgentRespons
 	if err != nil {
 		return AgentResponse{}, fmt.Errorf("call ML service: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.WarnContext(ctx, "закрыть ответ ML-сервиса", "error", err)
+		}
+	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return AgentResponse{}, fmt.Errorf("ML service returned %s: %s", resp.Status, strings.TrimSpace(string(message)))
