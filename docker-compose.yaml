@@ -1,4 +1,51 @@
+name: ai-buddy
+
 services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ai_buddy
+      POSTGRES_PASSWORD: ai_buddy
+      POSTGRES_DB: ai_buddy
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "ai_buddy", "-d", "ai_buddy"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  ml:
+    build: ./ml
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      HTTPS_PROXY: ${ML_HTTPS_PROXY:-}
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://ai_buddy:ai_buddy@db:5432/ai_buddy?sslmode=disable
+      ML_AGENT_URL: http://ml:8090/chat
+      DEMO_SEED_ON_STARTUP: "true"
+      ML_TOOLS_TOKEN: ${ML_TOOLS_TOKEN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8080"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
   openapi-swagger:
     image: swaggerapi/swagger-ui:latest
     container_name: openapi-swagger
@@ -8,3 +55,21 @@ services:
       - SWAGGER_JSON=/app/swagger.yml
     volumes:
       - ./docs/openapi.yaml:/app/swagger.yml
+
+  backend-tests:
+    profiles: [tests]
+    image: golang:1.24
+    working_dir: /src
+    volumes:
+      - ./backend:/src:ro
+    command: sh -c "go test -count=1 -coverpkg=./... -coverprofile=/tmp/coverage.out ./... && go tool cover -func=/tmp/coverage.out | tail -n 1"
+
+  frontend-tests:
+    profiles: [tests]
+    build:
+      context: ./frontend
+      target: build
+    command: npm test
+
+volumes:
+  db-data:

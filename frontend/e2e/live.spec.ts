@@ -35,7 +35,7 @@ test('frontend работает с настоящими Go API, PostgreSQL и ф
         role: 'assistant',
         text: 'Проверь параметры перед отправкой.',
         createdAt: new Date().toISOString(),
-        draft: preparation.draft,
+        accessDraft: preparation.draft,
       },
     ]
     await page.getByRole('button', { name: 'Мой план', exact: true }).click()

@@ -38,6 +38,18 @@ describe('HTTP-контракт frontend', () => {
     expect(options.headers['Idempotency-Key']).toBeTruthy()
     expect(options.headers.Authorization).toBeUndefined()
   })
+  it('приводит ответ чата Go к формату интерфейса', async () => {
+    const draft = { id: 'draft-1' }
+    const body = {
+      taskId: 'working-accesses',
+      messages: [{ id: 'message-1', role: 'assistant', text: 'Готово', accessDraft: draft }],
+      latestRun: { id: 'run-1', status: 'failed', error: { code: 'failed', message: 'Повтори' } },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(body))))
+    const chat = await client.chat('intern-alina', 'working-accesses')
+    expect(chat.messages[0].draft).toEqual(draft)
+    expect(chat.latestRun?.error).toBe('Повтори')
+  })
   it('сохраняет понятную ошибку API, обрабатывает HTML-ошибку и сбой сети', async () => {
     const fetch = vi
       .fn()

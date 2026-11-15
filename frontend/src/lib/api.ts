@@ -1,5 +1,7 @@
 import type {
+  AccessDraft,
   AccessRequest,
+  ChatMessage,
   Client,
   LoginResult,
   OnboardingPlan,
@@ -22,6 +24,10 @@ export class APIError extends Error {
     super(message)
     this.name = 'APIError'
   }
+}
+type ChatResponse = Omit<TaskChat, 'messages' | 'latestRun'> & {
+  messages: (ChatMessage & { accessDraft?: AccessDraft })[]
+  latestRun?: Omit<NonNullable<TaskChat['latestRun']>, 'error'> & { error?: { message: string } }
 }
 const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
 async function request<T>(
@@ -95,7 +101,17 @@ export const apiClient: Client = {
   completeIntro: async (id: string) => {
     await request('/onboarding/tasks/team-intro/complete', id, {})
   },
-  chat: (id: string, task: TaskId) => request<TaskChat>(`/onboarding/tasks/${task}/chat`, id),
+  chat: async (id: string, task: TaskId) => {
+    const chat = await request<ChatResponse>(`/onboarding/tasks/${task}/chat`, id)
+    return {
+      ...chat,
+      messages: chat.messages.map(({ accessDraft, ...message }) => ({
+        ...message,
+        draft: accessDraft,
+      })),
+      latestRun: chat.latestRun && { ...chat.latestRun, error: chat.latestRun.error?.message },
+    }
+  },
   sendMessage: async (id: string, task: TaskId, text: string) => {
     await request(
       `/onboarding/tasks/${task}/chat/messages`,
