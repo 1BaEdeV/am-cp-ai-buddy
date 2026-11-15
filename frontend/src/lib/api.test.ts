@@ -3,6 +3,75 @@ import { apiClient as client } from './api'
 
 afterEach(() => vi.unstubAllGlobals())
 describe('HTTP-контракт frontend', () => {
+  it('отправляет вход, регистрацию и возвращает вложенные данные карточек', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'registration_required' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ employeeId: 'intern' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ workingAccesses: { resources: [] } })))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ teamIntro: { description: 'Команда' } })),
+      )
+    vi.stubGlobal('fetch', fetch)
+    expect(await client.login('intern')).toEqual({ status: 'registration_required' })
+    const input = { positionId: 'position', mentorId: 'mentor', internshipStartDate: '2026-11-16' }
+    expect(await client.register('intern', input)).toEqual({ employeeId: 'intern' })
+    expect(fetch.mock.calls[0][1].headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ identifier: 'intern' })
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual(input)
+    expect(await client.accesses('intern')).toEqual({ resources: [] })
+    expect(await client.intro('intern')).toEqual({ description: 'Команда' })
+  })
+  it('читает карточку, план и чат; отправляет решение, повтор выдачи и завершение знакомства', async () => {
+    const fetch = vi.fn().mockImplementation(async () => new Response('{}'))
+    vi.stubGlobal('fetch', fetch)
+    await client.request('manager', 'request/1')
+    await client.decide('manager', 'request/1', 'reject', 'Уточни цель')
+    await client.retry('manager', 'request/1')
+    await client.plan('intern')
+    await client.chat('intern', 'team-intro')
+    await client.completeIntro('intern')
+    await client.requests('intern')
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/access-requests/request%2F1',
+      '/api/v1/access-requests/request%2F1/decision',
+      '/api/v1/access-requests/request%2F1/retry',
+      '/api/v1/onboarding',
+      '/api/v1/onboarding/tasks/team-intro/chat',
+      '/api/v1/onboarding/tasks/team-intro/complete',
+      '/api/v1/access-requests?group=all&limit=20&offset=0',
+    ])
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+      decision: 'reject',
+      reason: 'Уточни цель',
+    })
+    expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual({})
+    expect(fetch.mock.calls[0][1].method).toBe('GET')
+  })
+  it('принимает ответ без содержимого и отклоняет повреждённый успешный ответ', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(null, { status: 204 }))
+        .mockResolvedValueOnce(new Response('<html>Proxy</html>'))
+        .mockResolvedValueOnce(new Response('null'))
+        .mockResolvedValueOnce(new Response('{}', { status: 503 })),
+    )
+    await expect(client.completeIntro('intern')).resolves.toBeUndefined()
+    await expect(client.plan('intern')).rejects.toMatchObject({
+      status: 502,
+      code: 'invalid_response',
+    })
+    await expect(client.chat('intern', 'team-intro')).rejects.toMatchObject({
+      code: 'invalid_response',
+    })
+    await expect(client.requests('intern')).rejects.toMatchObject({
+      status: 503,
+      code: 'http_error',
+      message: 'Не удалось выполнить действие. Повтори попытку.',
+    })
+  })
   it('подтверждает один черновик в контексте пользователя без сервисного токена', async () => {
     const fetch = vi
       .fn()
