@@ -6,9 +6,13 @@ info:
     HTTP API для MVP адаптации стажёра.
     Стажёр знакомится с командой и получает все обязательные доступы.
     Руководитель рассматривает заявки, назначенные ему на согласование.
+    Реализованы Auth, карточка GET /onboarding/tasks/working-accesses,
+    AccessRequests и MLTools. Остальные маршруты плана, знакомства и чата —
+    целевой контракт; они помечены x-implementation-status: planned и пока
+    не зарегистрированы в Go API.
 servers:
   - url: http://localhost:8080/api/v1
-    description: Предлагаемый адрес локального бэкенда
+    description: Адрес локального бэкенда
 security:
   - demoIdentity: []
 tags:
@@ -20,6 +24,8 @@ tags:
     description: Отдельный диалог для каждого рабочего задания
   - name: AccessRequests
     description: Черновики, заявки и согласование
+  - name: MLTools
+    description: Внутренние операции для ML-сервера с отдельным Bearer-токеном
 
 paths:
   /auth/login:
@@ -41,9 +47,9 @@ paths:
               $ref: '#/components/schemas/LoginInput'
             examples:
               email:
-                value: {identifier: alina.smirnova@example.test}
+                value: {identifier: alina.search@example.test}
               employeeId:
-                value: {identifier: EMP-1001}
+                value: {identifier: intern-alina}
       responses:
         '200':
           description: Результат поиска профиля в тестовом справочнике.
@@ -56,44 +62,44 @@ paths:
                   value:
                     status: ready
                     profile:
-                      id: intern-alina
-                      employeeId: EMP-1001
+                      id: profile-intern-alina
+                      employeeId: intern-alina
                       firstName: Алина
                       secondName: Смирнова
-                      email: alina.smirnova@example.test
+                      email: alina.search@example.test
                       role: intern
-                      position: Стажёр Go-разработчик
+                      position: Backend-разработчик Go
                       team: {id: team-search, name: Поиск}
                       mentor: {id: mentor-katya, firstName: Катя, secondName: Волкова}
-                      internshipStartDate: '2026-11-09'
+                      internshipStartDate: '2026-11-10'
                 managerReady:
                   value:
                     status: ready
                     profile:
-                      id: manager-dmitry
-                      employeeId: EMP-2001
+                      id: profile-manager-dmitry
+                      employeeId: manager-dmitry
                       firstName: Дмитрий
                       secondName: Орлов
-                      email: dmitry.orlov@example.test
+                      email: dmitry.search@example.test
                       role: manager
                       position: Руководитель команды
                       team: {id: team-search, name: Поиск}
                 newIntern:
                   value:
                     status: registration_required
-                    employeeId: EMP-1002
-                    firstName: Олег
-                    secondName: Власов
-                    email: oleg.vlasov@example.test
+                    employeeId: intern-ivan
+                    firstName: Иван
+                    secondName: Петров
+                    email: ivan.web@example.test
                     role: intern
-                    positionId: position-go-intern
+                    positionId: position-frontend
                     team:
-                      id: team-search
-                      name: Поиск
+                      id: team-web
+                      name: Веб-интерфейсы
                       mentors:
-                        - {id: mentor-katya, firstName: Катя, secondName: Волкова}
+                        - {id: mentor-oleg, firstName: Олег, secondName: Морозов}
                     positionOptions:
-                      - {id: position-go-intern, name: Стажёр Go-разработчик}
+                      - {id: position-frontend, name: Frontend-разработчик}
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -132,9 +138,9 @@ paths:
             schema:
               $ref: '#/components/schemas/RegistrationInput'
             example:
-              positionId: position-go-intern
-              mentorId: mentor-katya
-              internshipStartDate: '2026-11-09'
+              positionId: position-frontend
+              mentorId: mentor-oleg
+              internshipStartDate: '2026-11-10'
       responses:
         '201':
           description: Профиль сохранён. Интерфейс открывает экран по роли сотрудника.
@@ -143,16 +149,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/Profile'
               example:
-                id: intern-oleg
-                employeeId: EMP-1002
-                firstName: Олег
-                secondName: Власов
-                email: oleg.vlasov@example.test
+                id: profile-intern-ivan
+                employeeId: intern-ivan
+                firstName: Иван
+                secondName: Петров
+                email: ivan.web@example.test
                 role: intern
-                position: Стажёр Go-разработчик
-                team: {id: team-search, name: Поиск}
-                mentor: {id: mentor-katya, firstName: Катя, secondName: Волкова}
-                internshipStartDate: '2026-11-09'
+                position: Frontend-разработчик
+                team: {id: team-web, name: Веб-интерфейсы}
+                mentor: {id: mentor-oleg, firstName: Олег, secondName: Морозов}
+                internshipStartDate: '2026-11-10'
         '200':
           description: Профиль с этими данными уже был сохранён.
           content:
@@ -192,6 +198,7 @@ paths:
 
   /onboarding:
     get:
+      x-implementation-status: planned
       tags: [Onboarding]
       operationId: getOnboardingPlan
       summary: Загрузить экран «Мой план»
@@ -226,10 +233,35 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /onboarding/tasks/working-accesses:
+    get:
+      tags: [Onboarding]
+      operationId: getWorkingAccesses
+      summary: Получить карточку рабочих доступов
+      description: |
+        Реализованный маршрут для стажёра с заполненным профилем.
+        Возвращает TaskDetails с id=working-accesses, ресурсами и прогрессом.
+        canRequest=true только для requestable; pending, issuing и failed
+        содержат активную заявку. Прогресс растёт после подтверждённой выдачи.
+      responses:
+        '200':
+          description: Карточка рабочих доступов и сохранённый прогресс.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /onboarding/tasks/{taskId}:
     parameters:
       - $ref: '#/components/parameters/TaskId'
     get:
+      x-implementation-status: planned
       tags: [Onboarding]
       operationId: getOnboardingTask
       summary: Открыть пункт плана
@@ -271,14 +303,14 @@ paths:
                         - id: team-wiki
                           service: wiki
                           name: Вики команды
-                          accessLevel: Чтение
+                          accessLevel: read
                           purpose: Инструкции и процессы команды
                           status: granted
                           canRequest: false
                         - id: youtrack-search
                           service: youtrack
                           name: YouTrack
-                          accessLevel: Участник проекта
+                          accessLevel: member
                           purpose: Работа с задачами команды
                           status: granted
                           canRequest: false
@@ -292,7 +324,7 @@ paths:
                         - id: grafana-search
                           service: grafana
                           name: Grafana · Поиск
-                          accessLevel: Чтение
+                          accessLevel: Viewer
                           purpose: Дашборды тестового окружения
                           status: requestable
                           canRequest: true
@@ -321,6 +353,7 @@ paths:
 
   /onboarding/tasks/team-intro/complete:
     post:
+      x-implementation-status: planned
       tags: [Onboarding]
       operationId: completeTeamIntro
       summary: Отметить знакомство
@@ -341,6 +374,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ChatTaskId'
     get:
+      x-implementation-status: planned
       tags: [Chat]
       operationId: getTaskChat
       summary: Получить историю чата и статус последнего ответа
@@ -379,6 +413,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ChatTaskId'
     post:
+      x-implementation-status: planned
       tags: [Chat]
       operationId: sendTaskChatMessage
       summary: Отправить вопрос AI-buddy
@@ -663,8 +698,119 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /internal/ml/tools:
+    get:
+      tags: [MLTools]
+      operationId: listMLTools
+      summary: Получить описания четырёх инструментов агента
+      description: Маршрут включён только при непустом ML_TOOLS_TOKEN. Контекст сотрудника для списка схем не требуется.
+      security:
+        - mlServiceToken: []
+      responses:
+        '200':
+          description: Имена, описания и JSON Schema аргументов. Подтверждение и выдача не входят в список.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MLToolDefinition'
+        '401':
+          description: Неверный сервисный токен; code=ml_service_unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /internal/ml/tools/{toolName}:
+    post:
+      tags: [MLTools]
+      operationId: callMLTool
+      summary: Выполнить инструмент в контексте текущего сотрудника
+      description: |
+        Требует ML_TOOLS_TOKEN и демо-ID сотрудника, установленного вызывающим сервером.
+        ID сотрудника, уровень, согласующего и подтверждение нельзя передать в JSON.
+        get_role_tools принимает {} и возвращает WorkingAccesses.
+        check_tool_access принимает resourceId и возвращает MLToolAccess без выдачи прав.
+        prepare_access_request принимает resourceId и возвращает MLAccessPreparation.
+        get_access_request_status принимает requestId и возвращает AccessRequest.
+        Подготовка создаёт один черновик; явное подтверждение выполняется пользовательским API.
+        При пустом ML_TOOLS_TOKEN маршруты не регистрируются (404).
+      security:
+        - mlServiceToken: []
+          demoIdentity: []
+      parameters:
+        - name: toolName
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [get_role_tools, check_tool_access, prepare_access_request, get_access_request_status]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/MLNoArguments'
+                - $ref: '#/components/schemas/MLResourceArguments'
+                - $ref: '#/components/schemas/MLRequestArguments'
+            examples:
+              resources: {value: {}}
+              resource: {value: {resourceId: gitlab-search-api}}
+              request: {value: {requestId: request-1042}}
+      responses:
+        '200':
+          description: Результат выбранного инструмента без дополнительной обёртки.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/WorkingAccesses'
+                  - $ref: '#/components/schemas/MLToolAccess'
+                  - $ref: '#/components/schemas/MLAccessPreparation'
+                  - $ref: '#/components/schemas/AccessRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: code=ml_service_unauthorized при неверном токене; demo_identity_required при неизвестном или отсутствующем сотруднике.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: resource_not_required, request_not_found или tool_not_found; чужие ресурсы и заявки не раскрываются.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: resource_changed или requirements_not_configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          description: access_check_unavailable — сбой или тайм-аут проверки провайдера.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
+    mlServiceToken:
+      type: http
+      scheme: bearer
+      description: Сервисный секрет ML_TOOLS_TOKEN. Не передаётся браузеру и LLM.
     demoIdentity:
       type: apiKey
       in: header
@@ -785,6 +931,67 @@ components:
           example: {code: internal_error, message: Не удалось выполнить запрос. Попробуй позже.}
 
   schemas:
+    MLToolDefinition:
+      type: object
+      required: [name, description, inputSchema]
+      properties:
+        name: {type: string, enum: [get_role_tools, check_tool_access, prepare_access_request, get_access_request_status]}
+        description: {type: string}
+        inputSchema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema аргументов, включая required и additionalProperties=false.
+
+    MLNoArguments:
+      type: object
+      additionalProperties: false
+
+    MLResourceArguments:
+      type: object
+      additionalProperties: false
+      required: [resourceId]
+      properties:
+        resourceId: {type: string, minLength: 1, pattern: '\S', example: gitlab-search-api}
+
+    MLRequestArguments:
+      type: object
+      additionalProperties: false
+      required: [requestId]
+      properties:
+        requestId: {type: string, minLength: 1, pattern: '\S', example: request-1042}
+
+    MLToolAccess:
+      type: object
+      required: [resourceId, requiredAccessLevel, granted, accessLevel, sufficient]
+      properties:
+        resourceId: {type: string}
+        requiredAccessLevel: {type: string}
+        granted: {type: boolean, description: Провайдер подтвердил наличие каких-либо прав.}
+        accessLevel: {type: string, description: Фактический уровень; пустой при отсутствии прав.}
+        sufficient: {type: boolean, description: Подтверждённый уровень включает требуемые права.}
+
+    MLAccessPreparation:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status, draft]
+          properties:
+            status: {type: string, enum: [draft]}
+            draft:
+              $ref: '#/components/schemas/AccessDraft'
+        - type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: {type: string, enum: [already_granted]}
+        - type: object
+          additionalProperties: false
+          required: [status, request]
+          properties:
+            status: {type: string, enum: [request_exists]}
+            request:
+              $ref: '#/components/schemas/AccessRequest'
+
     Error:
       type: object
       required: [code, message]
@@ -803,7 +1010,7 @@ components:
           maxLength: 254
           pattern: '\S'
           description: Рабочая почта или внутренний ID сотрудника из тестового справочника.
-          example: EMP-1001
+          example: intern-alina
 
     LoginResult:
       oneOf:
@@ -830,12 +1037,12 @@ components:
       required: [status, employeeId, firstName, secondName, email, role, positionId, team, positionOptions]
       properties:
         status: {type: string, enum: [registration_required]}
-        employeeId: {type: string, example: EMP-1002}
-        firstName: {type: string, example: Олег}
-        secondName: {type: string, example: Власов}
-        email: {type: string, format: email, example: oleg.vlasov@example.test}
+        employeeId: {type: string, example: intern-ivan}
+        firstName: {type: string, example: Иван}
+        secondName: {type: string, example: Петров}
+        email: {type: string, format: email, example: ivan.web@example.test}
         role: {type: string, enum: [intern, manager], example: intern}
-        positionId: {type: string, example: position-go-intern}
+        positionId: {type: string, example: position-backend-go}
         team:
           $ref: '#/components/schemas/RegistrationTeam'
         positionOptions:
@@ -859,7 +1066,7 @@ components:
       type: object
       additionalProperties: false
       properties:
-        positionId: {type: string, minLength: 1, example: position-go-intern}
+        positionId: {type: string, minLength: 1, example: position-backend-go}
         mentorId:
           type: string
           minLength: 1
@@ -869,7 +1076,7 @@ components:
           type: string
           format: date
           description: Обязательно для стажёра. Руководитель пропускает поле.
-          example: '2026-11-09'
+          example: '2026-11-10'
 
     RegistrationMentor:
       type: object
@@ -883,20 +1090,20 @@ components:
       type: object
       required: [id, name]
       properties:
-        id: {type: string, example: position-go-intern}
-        name: {type: string, example: Стажёр Go-разработчик}
+        id: {type: string, example: position-backend-go}
+        name: {type: string, example: Backend-разработчик Go}
 
     Profile:
       type: object
       required: [id, employeeId, firstName, secondName, email, role, position, team]
       properties:
-        id: {type: string, example: intern-alina}
-        employeeId: {type: string, example: EMP-1001}
+        id: {type: string, example: profile-intern-alina}
+        employeeId: {type: string, example: intern-alina}
         firstName: {type: string, example: Алина}
         secondName: {type: string, example: Смирнова}
-        email: {type: string, format: email, example: alina.smirnova@example.test}
+        email: {type: string, format: email, example: alina.search@example.test}
         role: {type: string, enum: [intern, manager], example: intern}
-        position: {type: string, example: Стажёр Go-разработчик}
+        position: {type: string, example: Backend-разработчик Go}
         team:
           $ref: '#/components/schemas/TeamRef'
         mentor:
@@ -905,7 +1112,7 @@ components:
         internshipStartDate:
           type: string
           format: date
-          example: '2026-11-09'
+          example: '2026-11-10'
       oneOf:
         - properties:
             role: {type: string, enum: [intern]}

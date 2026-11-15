@@ -27,13 +27,18 @@ contains the current team card, manager, and mentor. For `working-accesses`, it
 contains the current required resources, verified grants, request states, and
 request counters from the access services.
 
-The agent has no tools that mutate application state. It cannot approve requests.
+The current Python agent does not call the internal Go tool routes. It has no
+tools that mutate application state and cannot approve requests.
 For a clear request for one named required access, it returns that resource's ID
 as an intent. The Go worker calls the same `PrepareAccessRequest` service used by
 the rest of the access flow and returns the checked draft in the assistant chat
 message. The trainee must explicitly confirm that draft before a request is
 created. Broad or ambiguous requests produce no draft intent. Go remains the
 source of truth for all status and permission decisions.
+
+The Go backend separately exposes an authenticated internal tool API documented
+in `docs/ml-tools.md`. Wiring the Python agent to call those routes is not part
+of the current chat request path: the Go worker handles the draft intent itself.
 
 ## Response rules
 

@@ -9,6 +9,8 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
+	t.Setenv("DEMO_SEED_ON_STARTUP", "")
+	t.Setenv("ML_TOOLS_TOKEN", "")
 	t.Setenv("DATABASE_URL", " postgres://demo:demo@localhost/demo ")
 	t.Setenv("HTTP_ADDR", " ")
 	t.Setenv("ISSUANCE_POLL_INTERVAL", "")
@@ -17,6 +19,27 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, ":8080", cfg.HTTPAddr)
 	assert.Equal(t, "postgres://demo:demo@localhost/demo", cfg.DatabaseURL)
 	assert.Equal(t, 500*time.Millisecond, cfg.IssuancePollInterval)
+	assert.False(t, cfg.DemoSeedOnStartup)
+	assert.Empty(t, cfg.MLToolsToken)
+}
+
+func TestLoadDemoAndMLConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/demo")
+	t.Setenv("ISSUANCE_POLL_INTERVAL", "")
+	for _, value := range []string{"true", "false", " true "} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("DEMO_SEED_ON_STARTUP", value)
+			t.Setenv("ML_TOOLS_TOKEN", " test-service-token ")
+			cfg, err := Load()
+			require.NoError(t, err)
+			assert.Equal(t, value != "false", cfg.DemoSeedOnStartup)
+			assert.Equal(t, "test-service-token", cfg.MLToolsToken)
+		})
+	}
+	t.Setenv("DEMO_SEED_ON_STARTUP", "invalid")
+	cfg, err := Load()
+	require.ErrorContains(t, err, "DEMO_SEED_ON_STARTUP")
+	assert.Empty(t, cfg)
 }
 
 func TestLoadIssuancePollInterval(t *testing.T) {
