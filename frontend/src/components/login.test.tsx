@@ -71,12 +71,15 @@ describe('Вход и регистрация', () => {
       internshipStartDate: '2026-11-16',
     })
   })
-  it('в API-режиме позволяет выбрать другие тестовые профили', async () => {
+  it('в API-режиме показывает вход по ролям и регистрацию без списка других профилей', async () => {
     mode.demo = false
     mockClient.login.mockResolvedValue(registration)
     render(<Login onLogin={vi.fn()} />)
-    await userEvent.selectOptions(screen.getByLabelText('Другие тестовые стажёры'), 'intern-maria')
-    expect(mockClient.login).toHaveBeenCalledWith('intern-maria')
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Войти стажёром' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Войти руководителем' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    expect(mockClient.login).toHaveBeenCalledWith('intern-ivan')
     expect(await screen.findByRole('heading', { name: 'Регистрация' })).toBeVisible()
   })
   it('отправляет введённый ID без пробелов и блокирует повторный вход до ответа', async () => {

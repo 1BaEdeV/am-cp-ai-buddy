@@ -123,29 +123,6 @@ export function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
                   Зарегистрироваться
                 </button>
               </p>
-              {!isDemo && (
-                <div className="demo-profile-picker">
-                  <label htmlFor="demo-employee">Другие тестовые стажёры</label>
-                  <select
-                    id="demo-employee"
-                    disabled={busy}
-                    value=""
-                    onChange={(event) => void login(event.target.value)}
-                  >
-                    <option value="" disabled>
-                      Выбрать профиль
-                    </option>
-                    <option value="intern-maria">Мария Кузнецова</option>
-                    <option value="intern-pavel">Павел Новиков</option>
-                    <option value="intern-daria">Дарья Михайлова</option>
-                    <option value="intern-artem">Артём Волков</option>
-                    <option value="intern-polina">Полина Семёнова</option>
-                    <option value="intern-kirill">Кирилл Николаев</option>
-                    <option value="intern-sofya">Софья Тихонова</option>
-                    <option value="intern-egor">Егор Комаров</option>
-                  </select>
-                </div>
-              )}
             </>
           )}
         </section>
