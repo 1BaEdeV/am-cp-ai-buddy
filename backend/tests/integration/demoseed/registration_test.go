@@ -33,12 +33,14 @@ func checkDemoRegistration(t *testing.T, db *gorm.DB) {
 	_, err := demoseed.Load(ctx, db, demodata.Files)
 	require.NoError(t, err)
 	authService := auth.NewService(db)
-	// Конкретный сбой Ивана: должность существует, но у его команды нет таких правил.
+	// Несколько должностей поддержаны; неподготовленную должность сервер отклоняет.
 	form, err := authService.Login(ctx, "intern-ivan")
 	require.NoError(t, err)
-	require.Equal(t, []auth.Option{{ID: "position-frontend", Name: "Frontend-разработчик"}}, form.PositionOptions)
+	require.Len(t, form.PositionOptions, 4)
+	require.Contains(t, form.PositionOptions, auth.Option{ID: "position-frontend", Name: "Frontend-разработчик"})
+	require.Equal(t, "position-frontend", form.PositionID)
 	_, created, err := authService.Register(ctx, "intern-ivan", auth.RegistrationInput{
-		PositionID: "position-backend-go", MentorID: "mentor-oleg", InternshipStartDate: "2026-11-16",
+		PositionID: "position-devops", MentorID: "mentor-oleg", InternshipStartDate: "2026-11-16",
 	})
 	require.ErrorIs(t, err, auth.ErrInvalidInput)
 	require.False(t, created)
