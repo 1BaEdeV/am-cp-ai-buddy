@@ -106,12 +106,15 @@ func TestRegisterCreatedAndRepeated(t *testing.T) {
 	for _, created := range []bool{true, false} {
 		t.Run(fmt.Sprint(created), func(t *testing.T) {
 			router := newRouter(authStub{register: func(_ context.Context, id string, input authservice.RegistrationInput) (authservice.Profile, bool, error) {
+				if input.FullName == nil || *input.FullName != "Петров Иван Олегович" {
+					t.Fatalf("ФИО не передано: %+v", input)
+				}
 				if id != "EMP-1002" || input.PositionID != "position-go-intern" || input.MentorID != "mentor-katya" || input.InternshipStartDate != "2026-11-09" {
 					t.Fatalf("неверные аргументы: %q %+v", id, input)
 				}
 				return authservice.Profile{ID: "intern-oleg", EmployeeID: id}, created, nil
 			}})
-			body := `{"positionId":"position-go-intern","mentorId":"mentor-katya","internshipStartDate":"2026-11-09"}`
+			body := `{"fullName":"Петров Иван Олегович","positionId":"position-go-intern","mentorId":"mentor-katya","internshipStartDate":"2026-11-09"}`
 			w := request(router, http.MethodPost, "/api/v1/auth/register", body, " EMP-1002 ")
 			status := http.StatusOK
 			if created {

@@ -65,7 +65,7 @@ func registrationForm(tx *gorm.DB, employee models.Employee) (LoginResult, error
 	}
 	return LoginResult{
 		Status: LoginNeedsRegistration, EmployeeID: employee.ID, FirstName: employee.FirstName,
-		SecondName: employee.SecondName, Email: employee.Email, Role: employee.Role,
+		SecondName: employee.SecondName, MiddleName: employee.MiddleName, Email: employee.Email, Role: employee.Role,
 		Team: &selected, TeamOptions: options, PositionID: positionID, PositionOptions: selected.PositionOptions,
 	}, nil
 }

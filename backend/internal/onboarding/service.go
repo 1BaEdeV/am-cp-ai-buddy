@@ -85,7 +85,7 @@ func (s *Service) GetTeamIntro(
 		Description: "Узнай, чем занимается команда и к кому обращаться.",
 		ChatEnabled: true,
 		TeamIntro: &TeamIntro{
-			Trainee: Trainee{FullName: fullName(intern.FirstName, intern.SecondName), Position: intern.Position.Name,
+			Trainee: Trainee{FullName: fullName(intern.FirstName, intern.MiddleName, intern.SecondName), Position: intern.Position.Name,
 				InternshipStartDate: startDate(profile.InternshipStartDate)},
 			Team: TeamRef{
 				ID:   intern.Team.ID,
@@ -93,7 +93,7 @@ func (s *Service) GetTeamIntro(
 			},
 			Description: intern.Team.Description,
 			Manager: Contact{
-				FullName: fullName(manager.FirstName, manager.SecondName),
+				FullName: fullName(manager.FirstName, manager.MiddleName, manager.SecondName),
 				Position: manager.Position.Name,
 				Email:    manager.Email,
 				About:    manager.About,
@@ -158,8 +158,8 @@ func (s *Service) loadTeamIntroPeople(
 	return intern, profile, manager, nil
 }
 
-func fullName(firstName, secondName string) string {
-	return strings.TrimSpace(firstName + " " + secondName)
+func fullName(parts ...string) string {
+	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
 }
 
 func startDate(value *time.Time) string {

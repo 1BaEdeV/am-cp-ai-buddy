@@ -31,6 +31,7 @@ type LoginResult struct {
 	EmployeeID      string              `json:"employeeId,omitempty"`
 	FirstName       string              `json:"firstName,omitempty"`
 	SecondName      string              `json:"secondName,omitempty"`
+	MiddleName      string              `json:"middleName,omitempty"`
 	Email           string              `json:"email,omitempty"`
 	Role            models.EmployeeRole `json:"role,omitempty"`
 	PositionID      string              `json:"positionId,omitempty"`
@@ -42,10 +43,11 @@ type LoginResult struct {
 // RegistrationInput содержит выбор пользователя при первом заполнении профиля.
 // Стажёр также выбирает команду, её наставника и дату начала стажировки.
 type RegistrationInput struct {
-	TeamID              string `json:"teamId,omitempty"`
-	PositionID          string `json:"positionId,omitempty"`
-	MentorID            string `json:"mentorId,omitempty"`
-	InternshipStartDate string `json:"internshipStartDate,omitempty"` // Календарная дата в формате YYYY-MM-DD.
+	FullName            *string `json:"fullName,omitempty"` // Фамилия Имя [Отчество]. nil сохраняет имя из справочника.
+	TeamID              string  `json:"teamId,omitempty"`
+	PositionID          string  `json:"positionId,omitempty"`
+	MentorID            string  `json:"mentorId,omitempty"`
+	InternshipStartDate string  `json:"internshipStartDate,omitempty"` // Календарная дата в формате YYYY-MM-DD.
 }
 
 // Profile содержит данные зарегистрированного сотрудника для ответа API.
@@ -55,6 +57,7 @@ type Profile struct {
 	EmployeeID          string              `json:"employeeId"`
 	FirstName           string              `json:"firstName"`
 	SecondName          string              `json:"secondName"`
+	MiddleName          string              `json:"middleName,omitempty"`
 	Email               string              `json:"email"`
 	Role                models.EmployeeRole `json:"role"`
 	Position            string              `json:"position"`

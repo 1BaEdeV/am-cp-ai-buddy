@@ -41,7 +41,8 @@ func checkTeamSelection(t *testing.T, db *gorm.DB) {
 		require.Len(t, team.Mentors, 2, team.ID)
 		require.NotEmpty(t, team.PositionOptions, team.ID)
 	}
-	input := auth.RegistrationInput{TeamID: "team-search", PositionID: "position-backend-go",
+	name := "Сидоров Алексей Сергеевич"
+	input := auth.RegistrationInput{FullName: &name, TeamID: "team-search", PositionID: "position-backend-go",
 		MentorID: "mentor-oleg", InternshipStartDate: "2026-11-16"}
 	_, created, err := s.Register(ctx, "intern-ivan", input)
 	require.ErrorIs(t, err, auth.ErrInvalidInput, "наставник другой команды не подходит")
@@ -55,6 +56,9 @@ func checkTeamSelection(t *testing.T, db *gorm.DB) {
 	require.True(t, created)
 	require.Equal(t, "team-search", profile.Team.ID)
 	require.Equal(t, "mentor-sasha", profile.Mentor.ID)
+	require.Equal(t, "Алексей", profile.FirstName)
+	require.Equal(t, "Сидоров", profile.SecondName)
+	require.Equal(t, "Сергеевич", profile.MiddleName)
 	_, repeated, err := s.Register(ctx, "intern-ivan", input)
 	require.NoError(t, err)
 	require.False(t, repeated)
@@ -85,7 +89,7 @@ func checkTeamSelection(t *testing.T, db *gorm.DB) {
 		context, err := builder.Build(ctx, "intern-ivan", taskID)
 		require.NoError(t, err)
 		intro := context.(map[string]any)["teamIntro"].(*onboarding.TeamIntro)
-		require.Equal(t, "Иван Петров", intro.Trainee.FullName)
+		require.Equal(t, "Алексей Сергеевич Сидоров", intro.Trainee.FullName)
 		require.Equal(t, "Backend-разработчик Go", intro.Trainee.Position)
 		require.Equal(t, "Поиск", intro.Team.Name)
 		require.Equal(t, "Саша Лебедев", intro.Mentor.FullName)
