@@ -21,7 +21,10 @@ describe('Вход и регистрация', () => {
     const search = {
       id: 'search',
       name: 'Поиск',
-      positionOptions: [{ id: 'go', name: 'Go-разработчик' }],
+      positionOptions: [
+        { id: 'go', name: 'Go-разработчик' },
+        { id: 'qa', name: 'Инженер по тестированию' },
+      ],
       mentors: [
         { id: 'katya', firstName: 'Катя', secondName: 'Волкова' },
         { id: 'sasha', firstName: 'Саша', secondName: 'Лебедев' },
@@ -37,6 +40,7 @@ describe('Вход и регистрация', () => {
     expect(screen.getByLabelText('Наставник')).toHaveValue('oleg')
     await userEvent.selectOptions(screen.getByLabelText('Команда'), 'search')
     expect(screen.getByLabelText('Должность')).toHaveValue('go')
+    await userEvent.selectOptions(screen.getByLabelText('Должность'), 'qa')
     expect(screen.getByLabelText('Наставник')).toHaveValue('katya')
     expect(screen.queryByRole('option', { name: 'Олег Морозов' })).not.toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Наставник'), 'sasha')
@@ -46,7 +50,7 @@ describe('Вход и регистрация', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Открыть мой план' }))
     expect(mockClient.register).toHaveBeenCalledWith('intern-ivan', {
       teamId: 'search',
-      positionId: 'go',
+      positionId: 'qa',
       mentorId: 'sasha',
       internshipStartDate: '2026-11-16',
     })

@@ -110,6 +110,51 @@ const webResources: RequiredResource[] = [
     canRequest: true,
   },
 ]
+const commonResources = initialResources.slice(0, 2)
+const testCode: RequiredResource = {
+  ...webResources[2],
+  accessLevel: 'Reporter',
+  purpose: 'Просмотр учебного кода и результатов тестовых сборок.',
+}
+const designerResources: RequiredResource[] = [
+  ...commonResources,
+  { ...webResources[3], accessLevel: 'Editor', purpose: 'Редактирование учебных макетов.' },
+]
+const analystResources: RequiredResource[] = [
+  ...commonResources,
+  {
+    id: 'postgres-training',
+    service: 'postgres',
+    name: 'PostgreSQL · учебная база',
+    accessLevel: 'read',
+    purpose: 'Выполнение запросов к обезличенным учебным данным.',
+    status: 'requestable',
+    canRequest: true,
+  },
+  {
+    id: 'metabase-training',
+    service: 'metabase',
+    name: 'Metabase · учебная аналитика',
+    accessLevel: 'Viewer',
+    purpose: 'Анализ учебных метрик и отчётов.',
+    status: 'requestable',
+    canRequest: true,
+  },
+  initialResources[3],
+]
+const resourcesByPosition: Record<string, Record<string, RequiredResource[]>> = {
+  'team-web': {
+    'Frontend-разработчик': webResources,
+    'Backend-разработчик Go': [...commonResources, webResources[2]],
+    'Инженер по тестированию': [...commonResources, testCode, webResources[3]],
+    'Продуктовый дизайнер': designerResources,
+  },
+  'team-search': {
+    'Backend-разработчик Go': initialResources,
+    'Инженер по тестированию': [...commonResources, testCode, initialResources[3]],
+    'Аналитик данных': analystResources,
+  },
+}
 interface State {
   version: 1
   profiles: Record<string, Profile>
@@ -190,7 +235,7 @@ function settle() {
 function card(id: string): WorkingAccesses {
   const actor = intern(id)
   settle()
-  const resources = (actor.team.id === 'team-web' ? webResources : initialResources).map(
+  const resources = (resourcesByPosition[actor.team.id]?.[actor.position] || initialResources).map(
     (resource) => {
       const r = state.requests.find(
         (r) =>
@@ -246,13 +291,22 @@ const demoTeams = [
       { id: 'mentor-oleg', firstName: 'Олег', secondName: 'Морозов' },
       { id: 'mentor-vera', firstName: 'Вера', secondName: 'Крылова' },
     ],
-    positionOptions: [{ id: 'position-frontend', name: 'Frontend-разработчик' }],
+    positionOptions: [
+      { id: 'position-frontend', name: 'Frontend-разработчик' },
+      { id: 'position-backend-go', name: 'Backend-разработчик Go' },
+      { id: 'position-qa', name: 'Инженер по тестированию' },
+      { id: 'position-designer', name: 'Продуктовый дизайнер' },
+    ],
   },
   {
     id: 'team-search',
     name: 'Поиск',
     mentors: [mentor, { id: 'mentor-sasha', firstName: 'Саша', secondName: 'Лебедев' }],
-    positionOptions: [{ id: 'position-backend-go', name: 'Backend-разработчик Go' }],
+    positionOptions: [
+      { id: 'position-backend-go', name: 'Backend-разработчик Go' },
+      { id: 'position-qa', name: 'Инженер по тестированию' },
+      { id: 'position-data-analyst', name: 'Аналитик данных' },
+    ],
   },
 ]
 const newIntern: Extract<LoginResult, { status: 'registration_required' }> = {
@@ -263,11 +317,7 @@ const newIntern: Extract<LoginResult, { status: 'registration_required' }> = {
   email: 'ivan.web@example.test',
   role: 'intern',
   positionId: 'position-frontend',
-  team: {
-    id: 'team-web',
-    name: 'Веб-интерфейсы',
-    mentors: [{ id: 'mentor-oleg', firstName: 'Олег', secondName: 'Морозов' }],
-  },
+  team: demoTeams[0],
   positionOptions: demoTeams[0].positionOptions,
   teamOptions: demoTeams,
 }
