@@ -4,18 +4,7 @@ import type { AccessRequest, OnboardingPlan, Profile, TaskId, WorkingAccesses } 
 import { useResource } from '../lib/use-resource'
 import { Chat } from './chat'
 import type { Screen } from './layout'
-import {
-  Avatar,
-  Badge,
-  Button,
-  Empty,
-  ErrorNotice,
-  Icon,
-  Loading,
-  Status,
-  Tile,
-  type IconName,
-} from './ui'
+import { Badge, Button, Empty, ErrorNotice, Icon, Loading, Status, Tile, type IconName } from './ui'
 
 const taskIcons: Record<TaskId, IconName> = {
   'team-intro': 'people',
@@ -243,32 +232,17 @@ function Intro({
         <>
           <span className="eyebrow">Рады видеть тебя с нами</span>
           <h2>Команда «{data.team.name}»</h2>
-          <p className="team-intro">{data.description}</p>
-          <div className="people-grid">
-            <div className="person">
-              <Avatar name={data.manager.fullName} tone="blue" />
-              <div>
-                <strong>{data.manager.fullName}</strong>
-                <p>{data.manager.position}</p>
-                {data.manager.email && <p>{data.manager.email}</p>}
-                {data.manager.about && <p className="person-about">{data.manager.about}</p>}
-              </div>
-            </div>
-            <div className="person">
-              <Avatar name={data.mentor.fullName} />
-              <div>
-                <strong>{data.mentor.fullName}</strong>
-                <p>{data.mentor.position}</p>
-                {data.mentor.email && <p>{data.mentor.email}</p>}
-                {data.mentor.about && <p className="person-about">{data.mentor.about}</p>}
-              </div>
-            </div>
-          </div>
+          <p className="team-intro">
+            {data.description
+              .split(/(?<=[.!?])\s+/)
+              .slice(0, 2)
+              .join(' ')}
+          </p>
           <div className="intro-tip">
             <Icon name="people" />
             <p>
-              Поздоровайся с коллегами и обсуди с наставником план первых дней. Когда познакомишься,
-              отметь этот шаг.
+              Спроси AI-buddy о команде, наставнике и руководителе. Он расскажет, к кому обращаться
+              и с чего начать. Когда познакомишься, отметь этот шаг.
             </p>
           </div>
           <div className="detail-actions">

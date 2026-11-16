@@ -66,9 +66,11 @@ describe('План и задания', () => {
     )
     expect(screen.getByText('3 из 3 выдано')).toHaveClass('green')
   })
-  it('загружает людей команды и отмечает знакомство', async () => {
+  it('показывает краткое описание и предлагает узнать о людях в чате', async () => {
     mockClient.intro.mockResolvedValue({
       ...(await import('../test/fixtures')).intro,
+      description:
+        'Команда создаёт веб-интерфейсы. Работает с React и TypeScript. Дизайн берётся из Figma. В первую неделю запусти интерфейс.',
       manager: {
         fullName: 'Дмитрий Орлов',
         position: 'Руководитель',
@@ -84,9 +86,14 @@ describe('План и задания', () => {
     })
     const props = taskProps('team-intro')
     render(<TaskPage {...props} />)
-    expect(await screen.findByText('Катя Волкова')).toBeVisible()
-    expect(screen.getByText('dmitry@example.test')).toBeVisible()
-    expect(screen.getByText('Помогает с первым merge request')).toBeVisible()
+    expect(
+      await screen.findByText('Команда создаёт веб-интерфейсы. Работает с React и TypeScript.'),
+    ).toBeVisible()
+    expect(screen.queryByText(/Дизайн берётся из Figma/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Катя Волкова')).not.toBeInTheDocument()
+    expect(screen.queryByText('Дмитрий Орлов')).not.toBeInTheDocument()
+    expect(screen.queryByText('dmitry@example.test')).not.toBeInTheDocument()
+    expect(screen.queryByText('Помогает с первым merge request')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Отметить знакомство' }))
     expect(mockClient.completeIntro).toHaveBeenCalledWith(profile.employeeId)
     await waitFor(() => expect(props.onChange).toHaveBeenCalledTimes(1))
