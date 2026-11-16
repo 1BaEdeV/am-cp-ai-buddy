@@ -16,6 +16,26 @@ const key = 'ai-buddy-demo-v1'
 const copy = <T>(value: T): T => structuredClone(value)
 const now = () => new Date().toISOString()
 const active = (status: string) => ['pending', 'issuing', 'failed'].includes(status)
+function registrationName(
+  value: string | undefined,
+  fallback: Pick<Profile, 'firstName' | 'secondName' | 'middleName'>,
+) {
+  if (value === undefined)
+    return {
+      firstName: fallback.firstName,
+      secondName: fallback.secondName,
+      middleName: fallback.middleName,
+    }
+  const parts = value.trim().split(/\s+/)
+  if (
+    parts.length < 2 ||
+    parts.length > 3 ||
+    [...value].length > 150 ||
+    parts.some((part) => !/^[\p{L}\p{M}'’ʼ-]+$/u.test(part) || !/\p{L}/u.test(part))
+  )
+    throw new APIError('Укажи фамилию, имя и отчество, если есть.', 400, 'invalid_input')
+  return { firstName: parts[1], secondName: parts[0], middleName: parts[2] }
+}
 const mentor = { id: 'mentor-katya', firstName: 'Катя', secondName: 'Волкова' }
 const profiles: Record<string, Profile> = {
   'intern-alina': {
@@ -348,10 +368,14 @@ export const demoClient: Client = {
       !/^\d{4}-\d{2}-\d{2}$/.test(input.internshipStartDate || '')
     )
       throw new APIError('Проверь данные профиля.', 400, 'invalid_input')
+    const name = registrationName(input.fullName, state.profiles[id] || newIntern)
     if (state.profiles[id]) {
       const previous = state.profiles[id]
       if (
         previous.team.id !== team.id ||
+        previous.firstName !== name.firstName ||
+        previous.secondName !== name.secondName ||
+        previous.middleName !== name.middleName ||
         previous.position !== position.name ||
         previous.mentor?.id !== selectedMentor.id ||
         previous.internshipStartDate !== input.internshipStartDate
@@ -362,8 +386,7 @@ export const demoClient: Client = {
     state.profiles[id] = {
       id: crypto.randomUUID(),
       employeeId: id,
-      firstName: newIntern.firstName,
-      secondName: newIntern.secondName,
+      ...name,
       email: newIntern.email,
       role: 'intern',
       position: position.name,
@@ -515,6 +538,11 @@ export const demoClient: Client = {
     const p = intern(id)
     return {
       team: copy(p.team),
+      trainee: {
+        fullName: [p.firstName, p.middleName, p.secondName].filter(Boolean).join(' '),
+        position: p.position,
+        internshipStartDate: p.internshipStartDate,
+      },
       description:
         p.team.id === 'team-search'
           ? 'Мы помогаем пользователям Авито быстро находить подходящие объявления. Команда отвечает за поисковый сервис и его качество.'

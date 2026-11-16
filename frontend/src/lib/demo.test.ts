@@ -14,6 +14,49 @@ beforeEach(resetDemo)
 afterEach(() => vi.useRealTimers())
 describe('Демо-сценарий доступов', () => {
   it.each([
+    [' Сидоров  Алексей Сергеевич ', 'Алексей', 'Сидоров', 'Сергеевич'],
+    ['Иванова-Петрова Анна-Мария', 'Анна-Мария', 'Иванова-Петрова', undefined],
+  ])(
+    'сохраняет введённое ФИО %s вместо имени демо-сотрудника',
+    async (fullName, firstName, secondName, middleName) => {
+      const input = {
+        fullName,
+        positionId: 'position-frontend',
+        mentorId: 'mentor-oleg',
+        internshipStartDate: '2026-11-16',
+      }
+      const saved = await client.register('intern-ivan', input)
+      expect(saved).toMatchObject({ firstName, secondName, middleName })
+      expect(await client.login('intern-ivan')).toEqual({ status: 'ready', profile: saved })
+      expect((await client.intro('intern-ivan')).trainee?.fullName).toBe(
+        [firstName, middleName, secondName].filter(Boolean).join(' '),
+      )
+      expect(await client.register('intern-ivan', input)).toEqual(saved)
+      await expect(
+        client.register('intern-ivan', { ...input, fullName: 'Петров Иван' }),
+      ).rejects.toMatchObject({ code: 'profile_already_exists' })
+    },
+  )
+  it.each([
+    '',
+    '  ',
+    'Иван',
+    'Иванов Иван123',
+    '--- Иван',
+    'Иванов Иван Иванович Ещё',
+    'Я'.repeat(150) + ' Иван',
+  ])('не сохраняет некорректное ФИО %s', async (fullName) => {
+    await expect(
+      client.register('intern-ivan', {
+        fullName,
+        positionId: 'position-frontend',
+        mentorId: 'mentor-oleg',
+        internshipStartDate: '2026-11-16',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+    expect((await client.login('intern-ivan')).status).toBe('registration_required')
+  })
+  it.each([
     ['team-web', 'position-frontend', 'Frontend-разработчик', 'gitlab-onboarding', 'Developer', 4],
     [
       'team-web',

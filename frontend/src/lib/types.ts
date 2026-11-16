@@ -20,6 +20,7 @@ export interface Profile {
   employeeId: string
   firstName: string
   secondName: string
+  middleName?: string
   email: string
   role: Role
   position: string
@@ -34,6 +35,7 @@ export type LoginResult =
       employeeId: string
       firstName: string
       secondName: string
+      middleName?: string
       email: string
       role: Role
       positionId: string
@@ -42,6 +44,7 @@ export type LoginResult =
       positionOptions: Option[]
     }
 export interface RegistrationInput {
+  fullName?: string
   teamId?: string
   positionId: string
   mentorId?: string

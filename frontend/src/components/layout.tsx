@@ -235,7 +235,7 @@ export function ProfileModal({
         <Avatar name={`${profile.firstName} ${profile.secondName}`} />
         <div>
           <h3>
-            {profile.firstName} {profile.secondName}
+            {[profile.firstName, profile.middleName, profile.secondName].filter(Boolean).join(' ')}
           </h3>
           <p className="muted">{profile.position}</p>
         </div>
