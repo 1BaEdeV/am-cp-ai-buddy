@@ -35,7 +35,7 @@ describe('Вход и регистрация', () => {
       teamOptions: [registration.team, search],
     })
     render(<Login onLogin={vi.fn()} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Иван Петров' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
     await screen.findByLabelText('Команда')
     expect(screen.getByLabelText('Наставник')).toHaveValue('oleg')
     await userEvent.selectOptions(screen.getByLabelText('Команда'), 'search')
@@ -97,7 +97,7 @@ describe('Вход и регистрация', () => {
   it('возвращается из регистрации к выбору сотрудника', async () => {
     mockClient.login.mockResolvedValue(registration)
     render(<Login onLogin={vi.fn()} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Иван Петров' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
     expect(await screen.findByText('Привет, Иван!')).toBeVisible()
     await userEvent.click(screen.getByRole('button', { name: 'Другой сотрудник' }))
     expect(screen.getByLabelText('Рабочая почта или ID')).toBeVisible()
@@ -109,7 +109,7 @@ describe('Вход и регистрация', () => {
       mockClient.register.mockRejectedValueOnce(error)
       const onLogin = vi.fn()
       render(<Login onLogin={onLogin} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Иван Петров' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
       await screen.findByLabelText('Должность')
       await userEvent.selectOptions(screen.getByLabelText('Должность'), 'backend')
       await userEvent.selectOptions(screen.getByLabelText('Наставник'), 'oleg')

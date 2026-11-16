@@ -115,13 +115,12 @@ export function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
                 </Button>
               </div>
               <p className="login-help">
-                Новый профиль для регистрации:{' '}
                 <button
                   className="text-link"
                   disabled={busy}
                   onClick={() => void login('intern-ivan')}
                 >
-                  Иван Петров
+                  Зарегистрироваться
                 </button>
               </p>
               {!isDemo && (
