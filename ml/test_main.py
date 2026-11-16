@@ -37,6 +37,27 @@ class AgentTests(unittest.TestCase):
         self.assertIn("Катя Волкова", client.models.kwargs["config"].system_instruction)
         self.assertEqual(client.models.kwargs["config"].response_mime_type, "application/json")
 
+    def test_selected_team_and_people_are_passed_to_model_for_each_request(self):
+        client = FakeClient()
+        for team, mentor, manager in [("Поиск", "Саша Лебедев", "Дмитрий Орлов"), ("Веб-интерфейсы", "Вера Крылова", "Анна Соколова")]:
+            payload = sample_payload()
+            payload["context"] = {"teamIntro": {
+                "team": {"name": team},
+                "trainee": {"fullName": "Иван Петров", "position": "Разработчик"},
+                "mentor": {"fullName": mentor, "about": "Помогает с первыми задачами", "email": "mentor@example.test"},
+                "manager": {"fullName": manager, "about": "Определяет приоритеты"},
+            }}
+            main.generate_reply(payload, client=client)
+            instruction = client.models.kwargs["config"].system_instruction
+            self.assertIn(team, instruction)
+            self.assertIn(mentor, instruction)
+            self.assertIn(manager, instruction)
+            self.assertIn("Иван Петров", instruction)
+            self.assertIn("mentor@example.test", instruction)
+            self.assertIn("Помогает с первыми задачами", instruction)
+            other_mentor = "Вера Крылова" if mentor == "Саша Лебедев" else "Саша Лебедев"
+            self.assertNotIn(other_mentor, instruction)
+
     def test_generate_reply_returns_access_request_intent(self):
         payload = sample_payload()
         payload["taskId"] = "working-accesses"

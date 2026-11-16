@@ -67,9 +67,26 @@ describe('План и задания', () => {
     expect(screen.getByText('3 из 3 выдано')).toHaveClass('green')
   })
   it('загружает людей команды и отмечает знакомство', async () => {
+    mockClient.intro.mockResolvedValue({
+      ...(await import('../test/fixtures')).intro,
+      manager: {
+        fullName: 'Дмитрий Орлов',
+        position: 'Руководитель',
+        email: 'dmitry@example.test',
+        about: 'Согласует доступы и приоритеты',
+      },
+      mentor: {
+        fullName: 'Катя Волкова',
+        position: 'Наставник',
+        email: 'katya@example.test',
+        about: 'Помогает с первым merge request',
+      },
+    })
     const props = taskProps('team-intro')
     render(<TaskPage {...props} />)
     expect(await screen.findByText('Катя Волкова')).toBeVisible()
+    expect(screen.getByText('dmitry@example.test')).toBeVisible()
+    expect(screen.getByText('Помогает с первым merge request')).toBeVisible()
     await userEvent.click(screen.getByRole('button', { name: 'Отметить знакомство' }))
     expect(mockClient.completeIntro).toHaveBeenCalledWith(profile.employeeId)
     await waitFor(() => expect(props.onChange).toHaveBeenCalledTimes(1))

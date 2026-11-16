@@ -250,6 +250,8 @@ function Intro({
               <div>
                 <strong>{data.manager.fullName}</strong>
                 <p>{data.manager.position}</p>
+                {data.manager.email && <p>{data.manager.email}</p>}
+                {data.manager.about && <p className="person-about">{data.manager.about}</p>}
               </div>
             </div>
             <div className="person">
@@ -257,6 +259,8 @@ function Intro({
               <div>
                 <strong>{data.mentor.fullName}</strong>
                 <p>{data.mentor.position}</p>
+                {data.mentor.email && <p>{data.mentor.email}</p>}
+                {data.mentor.about && <p className="person-about">{data.mentor.about}</p>}
               </div>
             </div>
           </div>

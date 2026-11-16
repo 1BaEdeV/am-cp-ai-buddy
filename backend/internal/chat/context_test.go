@@ -52,6 +52,7 @@ func TestAppContextBuilderBuildsTaskContexts(t *testing.T) {
 	require.NoError(t, err)
 	values := accessContext.(map[string]any)
 	require.Equal(t, intro.TeamIntro.Team, values["team"])
+	require.Equal(t, intro.TeamIntro, values["teamIntro"])
 	require.Equal(t, accesses, values["workingAccesses"])
 	require.Equal(t, map[string]int64{"pending": 1, "issuing": 2, "granted": 3, "rejected": 4, "failed": 5}, values["requestCounts"])
 

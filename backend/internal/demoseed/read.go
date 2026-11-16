@@ -38,6 +38,7 @@ type mentor struct {
 	FirstName  string `yaml:"first_name"`
 	SecondName string `yaml:"second_name"`
 	Contact    string `yaml:"contact"`
+	About      string `yaml:"about"`
 }
 
 type employee struct {
@@ -48,6 +49,7 @@ type employee struct {
 	TeamID     string              `yaml:"team_id"`
 	PositionID string              `yaml:"position_id"`
 	Role       models.EmployeeRole `yaml:"role"`
+	About      string              `yaml:"about"`
 }
 
 type profile struct {
@@ -106,14 +108,14 @@ func Read(files fs.FS) (Data, error) {
 		return Data{}, err
 	}
 	for _, r := range mentors {
-		data.Mentors = append(data.Mentors, models.Mentor{ID: r.ID, TeamID: r.TeamID, FirstName: r.FirstName, SecondName: r.SecondName, Contact: r.Contact})
+		data.Mentors = append(data.Mentors, models.Mentor{ID: r.ID, TeamID: r.TeamID, FirstName: r.FirstName, SecondName: r.SecondName, Contact: r.Contact, About: r.About})
 	}
 	employees, err := decode[employee](files, "employees")
 	if err != nil {
 		return Data{}, err
 	}
 	for _, r := range employees {
-		data.Employees = append(data.Employees, models.Employee{ID: r.ID, Email: r.Email, FirstName: r.FirstName, SecondName: r.SecondName, TeamID: r.TeamID, PositionID: r.PositionID, Role: r.Role})
+		data.Employees = append(data.Employees, models.Employee{ID: r.ID, Email: r.Email, FirstName: r.FirstName, SecondName: r.SecondName, TeamID: r.TeamID, PositionID: r.PositionID, Role: r.Role, About: r.About})
 	}
 	profiles, err := decode[profile](files, "profiles")
 	if err != nil {

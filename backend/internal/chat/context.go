@@ -55,6 +55,7 @@ func (b *AppContextBuilder) Build(ctx context.Context, employeeID, taskID string
 		}
 		return map[string]any{
 			"team":            intro.TeamIntro.Team,
+			"teamIntro":       intro.TeamIntro,
 			"workingAccesses": accesses,
 			"requestCounts": map[string]int64{
 				"pending":  requests.Counts.Pending,
