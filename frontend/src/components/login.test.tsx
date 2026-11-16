@@ -17,11 +17,28 @@ beforeEach(() => {
 })
 
 describe('Вход и регистрация', () => {
+  it('просит ввести ФИО перед сохранением профиля', async () => {
+    mockClient.login.mockResolvedValue(registration)
+    render(<Login onLogin={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    const fullName = await screen.findByLabelText('ФИО')
+    expect(fullName).toHaveValue('')
+    expect(fullName).toBeRequired()
+    fireEvent.change(screen.getByLabelText('Начало стажировки'), {
+      target: { value: '2026-11-16' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть мой план' }))
+    expect(fullName).toBeInvalid()
+    expect(mockClient.register).not.toHaveBeenCalled()
+  })
   it('при смене команды предлагает её должности и наставников и сохраняет выбранного', async () => {
     const search = {
       id: 'search',
       name: 'Поиск',
-      positionOptions: [{ id: 'go', name: 'Go-разработчик' }],
+      positionOptions: [
+        { id: 'go', name: 'Go-разработчик' },
+        { id: 'qa', name: 'Инженер по тестированию' },
+      ],
       mentors: [
         { id: 'katya', firstName: 'Катя', secondName: 'Волкова' },
         { id: 'sasha', firstName: 'Саша', secondName: 'Лебедев' },
@@ -32,11 +49,13 @@ describe('Вход и регистрация', () => {
       teamOptions: [registration.team, search],
     })
     render(<Login onLogin={vi.fn()} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Иван Петров' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
     await screen.findByLabelText('Команда')
+    await userEvent.type(screen.getByLabelText('ФИО'), 'Сидоров Алексей Сергеевич')
     expect(screen.getByLabelText('Наставник')).toHaveValue('oleg')
     await userEvent.selectOptions(screen.getByLabelText('Команда'), 'search')
     expect(screen.getByLabelText('Должность')).toHaveValue('go')
+    await userEvent.selectOptions(screen.getByLabelText('Должность'), 'qa')
     expect(screen.getByLabelText('Наставник')).toHaveValue('katya')
     expect(screen.queryByRole('option', { name: 'Олег Морозов' })).not.toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Наставник'), 'sasha')
@@ -45,19 +64,23 @@ describe('Вход и регистрация', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: 'Открыть мой план' }))
     expect(mockClient.register).toHaveBeenCalledWith('intern-ivan', {
+      fullName: 'Сидоров Алексей Сергеевич',
       teamId: 'search',
-      positionId: 'go',
+      positionId: 'qa',
       mentorId: 'sasha',
       internshipStartDate: '2026-11-16',
     })
   })
-  it('в API-режиме позволяет выбрать другие тестовые профили', async () => {
+  it('в API-режиме показывает вход по ролям и регистрацию без списка других профилей', async () => {
     mode.demo = false
     mockClient.login.mockResolvedValue(registration)
     render(<Login onLogin={vi.fn()} />)
-    await userEvent.selectOptions(screen.getByLabelText('Другие тестовые стажёры'), 'intern-maria')
-    expect(mockClient.login).toHaveBeenCalledWith('intern-maria')
-    expect(await screen.findByText('Привет, Иван!')).toBeVisible()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Войти стажёром' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Войти руководителем' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    expect(mockClient.login).toHaveBeenCalledWith('intern-ivan')
+    expect(await screen.findByRole('heading', { name: 'Регистрация' })).toBeVisible()
   })
   it('отправляет введённый ID без пробелов и блокирует повторный вход до ответа', async () => {
     const pending = deferred<Awaited<ReturnType<typeof mockClient.login>>>()
@@ -93,8 +116,8 @@ describe('Вход и регистрация', () => {
   it('возвращается из регистрации к выбору сотрудника', async () => {
     mockClient.login.mockResolvedValue(registration)
     render(<Login onLogin={vi.fn()} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Иван Петров' }))
-    expect(await screen.findByText('Привет, Иван!')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    expect(await screen.findByRole('heading', { name: 'Регистрация' })).toBeVisible()
     await userEvent.click(screen.getByRole('button', { name: 'Другой сотрудник' }))
     expect(screen.getByLabelText('Рабочая почта или ID')).toBeVisible()
   })
@@ -105,8 +128,9 @@ describe('Вход и регистрация', () => {
       mockClient.register.mockRejectedValueOnce(error)
       const onLogin = vi.fn()
       render(<Login onLogin={onLogin} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Иван Петров' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
       await screen.findByLabelText('Должность')
+      await userEvent.type(screen.getByLabelText('ФИО'), 'Петров Иван')
       await userEvent.selectOptions(screen.getByLabelText('Должность'), 'backend')
       await userEvent.selectOptions(screen.getByLabelText('Наставник'), 'oleg')
       fireEvent.change(screen.getByLabelText('Начало стажировки'), {
@@ -119,6 +143,7 @@ describe('Вход и регистрация', () => {
       expect(onLogin).not.toHaveBeenCalled()
       await userEvent.click(screen.getByRole('button', { name: 'Открыть мой план' }))
       expect(mockClient.register).toHaveBeenLastCalledWith('intern-ivan', {
+        fullName: 'Петров Иван',
         positionId: 'backend',
         teamId: 'web',
         mentorId: 'oleg',
@@ -137,9 +162,13 @@ describe('Вход и регистрация', () => {
     render(<Login onLogin={onLogin} />)
     await userEvent.click(screen.getByRole('button', { name: 'Войти руководителем' }))
     await screen.findByLabelText('Должность')
+    await userEvent.type(screen.getByLabelText('ФИО'), 'Орлов Дмитрий Андреевич')
     expect(screen.queryByLabelText('Наставник')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Открыть мой план' }))
-    expect(mockClient.register).toHaveBeenCalledWith('intern-ivan', { positionId: 'frontend' })
+    expect(mockClient.register).toHaveBeenCalledWith('intern-ivan', {
+      fullName: 'Орлов Дмитрий Андреевич',
+      positionId: 'frontend',
+    })
     await waitFor(() => expect(onLogin).toHaveBeenCalled())
   })
 })

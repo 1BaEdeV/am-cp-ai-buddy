@@ -41,6 +41,7 @@ func TestReadEmbeddedDemo(t *testing.T) {
 	assert.Len(t, d.Employees, 20)
 	assert.Len(t, d.Profiles, 11)
 	assert.Len(t, d.Resources, 10)
+	assert.Len(t, d.Requirements, 125)
 	assert.Len(t, d.Accesses, 2)
 	assert.Equal(t, "2026-11-10", d.Profiles[10].InternshipStartDate.Format(time.DateOnly))
 	assert.Equal(t, "2026-11-12T06:00:00Z", d.Accesses[0].VerifiedAt.UTC().Format(time.RFC3339))

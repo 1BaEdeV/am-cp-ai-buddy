@@ -73,8 +73,6 @@ type ToolAccess struct {
 }
 
 // CheckToolAccess проверяет фактические права только на обязательный ресурс.
-// Сетевой вызов выполняется после проверок роли и профиля, без транзакции БД.
-// Операция не выдаёт права, не создаёт заявки и не изменяет EmployeeAccess.
 func (s *Service) CheckToolAccess(ctx context.Context, resourceID string) (ToolAccess, error) {
 	id, err := EmployeeID(ctx)
 	if err != nil {

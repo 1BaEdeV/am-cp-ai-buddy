@@ -132,8 +132,10 @@ paths:
         Стажёр указывает наставника и дату начала стажировки. Руководитель может выбрать должность.
         Руководитель не может менять команду. При пропуске teamId и positionId
         используются текущие значения сотрудника.
-        Имя, почта и роль берутся из тестового справочника. Команда, должность и профиль сохраняются
-        в одной транзакции.
+        В fullName можно передать ФИО в порядке «Фамилия Имя Отчество»; отчество необязательно.
+        Пробелы нормализуются; допустимы буквы, дефис и апостроф. Без fullName сохраняется
+        имя из справочника. Почта и роль берутся из тестового справочника. ФИО, команда,
+        должность и профиль сохраняются одной транзакцией.
         Повтор с теми же данными возвращает сохранённый профиль.
       requestBody:
         required: true
@@ -142,6 +144,7 @@ paths:
             schema:
               $ref: '#/components/schemas/RegistrationInput'
             example:
+              fullName: Петров Иван Олегович
               teamId: team-web
               positionId: position-frontend
               mentorId: mentor-oleg
@@ -1062,6 +1065,7 @@ components:
         employeeId: {type: string, example: intern-ivan}
         firstName: {type: string, example: Иван}
         secondName: {type: string, example: Петров}
+        middleName: {type: string, example: Олегович}
         email: {type: string, format: email, example: ivan.web@example.test}
         role: {type: string, enum: [intern, manager], example: intern}
         positionId: {type: string, example: position-backend-go}
@@ -1098,6 +1102,12 @@ components:
       type: object
       additionalProperties: false
       properties:
+        fullName:
+          type: string
+          minLength: 3
+          maxLength: 150
+          description: Фамилия Имя [Отчество], два или три слова. UI требует заполнить; при пропуске API сохраняет имя из справочника.
+          example: Петров Иван Олегович
         teamId:
           type: string
           minLength: 1
@@ -1138,6 +1148,7 @@ components:
         employeeId: {type: string, example: intern-alina}
         firstName: {type: string, example: Алина}
         secondName: {type: string, example: Смирнова}
+        middleName: {type: string, description: Отчество, если указано., example: Олеговна}
         email: {type: string, format: email, example: alina.search@example.test}
         role: {type: string, enum: [intern, manager], example: intern}
         position: {type: string, example: Backend-разработчик Go}

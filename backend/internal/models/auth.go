@@ -16,6 +16,7 @@ type Employee struct {
 	Email      string `gorm:"not null;uniqueIndex:ux_employees_email,expression:lower(email)"`
 	FirstName  string `gorm:"not null"`
 	SecondName string `gorm:"not null"`
+	MiddleName string `gorm:"not null;default:''"` // Отчество, если указано при регистрации.
 	About      string `gorm:"not null;default:''"` // Справка о сотруднике для контекста AI-buddy.
 	PositionID string `gorm:"not null"`
 	Position   Position

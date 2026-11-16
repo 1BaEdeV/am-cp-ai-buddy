@@ -129,6 +129,10 @@ func (s *Service) Register(ctx context.Context, employeeID string, input Registr
 		if err != nil {
 			return err
 		}
+		name, err := registrationName(input.FullName, employee)
+		if err != nil {
+			return err
+		}
 		teamID := input.TeamID
 		if teamID == "" {
 			teamID = employee.TeamID
@@ -146,7 +150,8 @@ func (s *Service) Register(ctx context.Context, employeeID string, input Registr
 		case err == nil:
 			if mentorID(profile) != input.MentorID ||
 				dateString(profile.InternshipStartDate) != input.InternshipStartDate ||
-				employee.PositionID != positionID || employee.TeamID != teamID {
+				employee.PositionID != positionID || employee.TeamID != teamID ||
+				employee.FirstName != name.first || employee.SecondName != name.second || employee.MiddleName != name.middle {
 				return ErrProfileAlreadyExists
 			}
 			result = profileView(profile, employee)
@@ -155,6 +160,7 @@ func (s *Service) Register(ctx context.Context, employeeID string, input Registr
 			return fmt.Errorf("проверить существующий профиль: %w", err)
 		}
 
+		employee.FirstName, employee.SecondName, employee.MiddleName = name.first, name.second, name.middle
 		result, err = createProfile(tx, employee, input, teamID, positionID, startDate)
 		created = err == nil
 		return err
@@ -198,11 +204,10 @@ func createProfile(tx *gorm.DB, employee models.Employee, input RegistrationInpu
 		profile.MentorID = &selected.ID
 		mentor = &selected
 	}
-	if employee.PositionID != position.ID || employee.TeamID != team.ID {
-		if err := tx.Model(&models.Employee{}).Where("id = ?", employee.ID).
-			Updates(map[string]any{"position_id": position.ID, "team_id": team.ID}).Error; err != nil {
-			return Profile{}, fmt.Errorf("сохранить команду и должность: %w", err)
-		}
+	if err := tx.Model(&models.Employee{}).Where("id = ?", employee.ID).
+		Updates(map[string]any{"position_id": position.ID, "team_id": team.ID,
+			"first_name": employee.FirstName, "second_name": employee.SecondName, "middle_name": employee.MiddleName}).Error; err != nil {
+		return Profile{}, fmt.Errorf("сохранить ФИО, команду и должность: %w", err)
 	}
 	employee.TeamID, employee.PositionID = team.ID, position.ID
 	if err := tx.Create(&profile).Error; err != nil {
@@ -255,6 +260,7 @@ func profileView(profile models.Profile, employee models.Employee) Profile {
 		EmployeeID:          employee.ID,
 		FirstName:           employee.FirstName,
 		SecondName:          employee.SecondName,
+		MiddleName:          employee.MiddleName,
 		Email:               employee.Email,
 		Role:                employee.Role,
 		Position:            employee.Position.Name,

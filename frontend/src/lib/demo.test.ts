@@ -13,6 +13,96 @@ async function prepare(resource = 'gitlab-search-api') {
 beforeEach(resetDemo)
 afterEach(() => vi.useRealTimers())
 describe('Демо-сценарий доступов', () => {
+  it.each([
+    [' Сидоров  Алексей Сергеевич ', 'Алексей', 'Сидоров', 'Сергеевич'],
+    ['Иванова-Петрова Анна-Мария', 'Анна-Мария', 'Иванова-Петрова', undefined],
+  ])(
+    'сохраняет введённое ФИО %s вместо имени демо-сотрудника',
+    async (fullName, firstName, secondName, middleName) => {
+      const input = {
+        fullName,
+        positionId: 'position-frontend',
+        mentorId: 'mentor-oleg',
+        internshipStartDate: '2026-11-16',
+      }
+      const saved = await client.register('intern-ivan', input)
+      expect(saved).toMatchObject({ firstName, secondName, middleName })
+      expect(await client.login('intern-ivan')).toEqual({ status: 'ready', profile: saved })
+      expect((await client.intro('intern-ivan')).trainee?.fullName).toBe(
+        [firstName, middleName, secondName].filter(Boolean).join(' '),
+      )
+      expect(await client.register('intern-ivan', input)).toEqual(saved)
+      await expect(
+        client.register('intern-ivan', { ...input, fullName: 'Петров Иван' }),
+      ).rejects.toMatchObject({ code: 'profile_already_exists' })
+    },
+  )
+  it.each([
+    '',
+    '  ',
+    'Иван',
+    'Иванов Иван123',
+    '--- Иван',
+    'Иванов Иван Иванович Ещё',
+    'Я'.repeat(150) + ' Иван',
+  ])('не сохраняет некорректное ФИО %s', async (fullName) => {
+    await expect(
+      client.register('intern-ivan', {
+        fullName,
+        positionId: 'position-frontend',
+        mentorId: 'mentor-oleg',
+        internshipStartDate: '2026-11-16',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+    expect((await client.login('intern-ivan')).status).toBe('registration_required')
+  })
+  it.each([
+    ['team-web', 'position-frontend', 'Frontend-разработчик', 'gitlab-onboarding', 'Developer', 4],
+    [
+      'team-web',
+      'position-backend-go',
+      'Backend-разработчик Go',
+      'gitlab-onboarding',
+      'Developer',
+      3,
+    ],
+    ['team-web', 'position-qa', 'Инженер по тестированию', 'gitlab-onboarding', 'Reporter', 4],
+    ['team-web', 'position-designer', 'Продуктовый дизайнер', 'figma-design', 'Editor', 3],
+    [
+      'team-search',
+      'position-backend-go',
+      'Backend-разработчик Go',
+      'gitlab-search-api',
+      'Developer',
+      4,
+    ],
+    ['team-search', 'position-qa', 'Инженер по тестированию', 'gitlab-onboarding', 'Reporter', 4],
+    ['team-search', 'position-data-analyst', 'Аналитик данных', 'postgres-training', 'read', 5],
+  ] as const)(
+    'связывает должность %s/%s с доступами и параметрами заявки',
+    async (teamId, positionId, positionName, resourceId, level, total) => {
+      const form = await client.login('intern-ivan')
+      if (form.status !== 'registration_required') throw new Error('Ожидалась регистрация')
+      const team = form.teamOptions!.find((option) => option.id === teamId)!
+      expect(team.positionOptions!.length).toBeGreaterThanOrEqual(3)
+      expect(team.positionOptions).toContainEqual({ id: positionId, name: positionName })
+      const profile = await client.register('intern-ivan', {
+        teamId,
+        positionId,
+        mentorId: team.mentors[0].id,
+        internshipStartDate: '2026-11-16',
+      })
+      expect(profile.position).toBe(positionName)
+      const card = await client.accesses('intern-ivan')
+      expect(card.progress.total).toBe(total)
+      expect(card.resources.find((resource) => resource.id === resourceId)?.accessLevel).toBe(level)
+      await client.sendMessage('intern-ivan', 'working-accesses', 'Запроси доступ', resourceId)
+      const draft = (await client.chat('intern-ivan', 'working-accesses')).messages.at(-1)!.draft!
+      const request = await client.confirm('intern-ivan', draft.id)
+      expect(request.parameters.accessLevel).toBe(level)
+      expect(request.approverId).toBe(teamId === 'team-web' ? 'manager-anna' : 'manager-dmitry')
+    },
+  )
   it('связывает выбранную команду с ресурсами, наставником и согласующим', async () => {
     const input = {
       teamId: 'team-search',
@@ -29,8 +119,8 @@ describe('Демо-сценарий доступов', () => {
     )
     expect(await client.register('intern-ivan', input)).toEqual(result)
     await expect(
-      client.register('intern-ivan', { ...input, teamId: 'team-web' }),
-    ).rejects.toMatchObject({ status: 400 })
+      client.register('intern-ivan', { ...input, teamId: 'team-web', mentorId: 'mentor-oleg' }),
+    ).rejects.toMatchObject({ code: 'profile_already_exists' })
     await expect(
       client.register('intern-ivan', { ...input, mentorId: 'mentor-katya' }),
     ).rejects.toMatchObject({ code: 'profile_already_exists' })

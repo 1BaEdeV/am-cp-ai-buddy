@@ -115,38 +115,14 @@ export function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
                 </Button>
               </div>
               <p className="login-help">
-                Новый профиль для регистрации:{' '}
                 <button
                   className="text-link"
                   disabled={busy}
                   onClick={() => void login('intern-ivan')}
                 >
-                  Иван Петров
+                  Зарегистрироваться
                 </button>
               </p>
-              {!isDemo && (
-                <div className="demo-profile-picker">
-                  <label htmlFor="demo-employee">Другие тестовые стажёры</label>
-                  <select
-                    id="demo-employee"
-                    disabled={busy}
-                    value=""
-                    onChange={(event) => void login(event.target.value)}
-                  >
-                    <option value="" disabled>
-                      Выбрать профиль
-                    </option>
-                    <option value="intern-maria">Мария Кузнецова</option>
-                    <option value="intern-pavel">Павел Новиков</option>
-                    <option value="intern-daria">Дарья Михайлова</option>
-                    <option value="intern-artem">Артём Волков</option>
-                    <option value="intern-polina">Полина Семёнова</option>
-                    <option value="intern-kirill">Кирилл Николаев</option>
-                    <option value="intern-sofya">Софья Тихонова</option>
-                    <option value="intern-egor">Егор Комаров</option>
-                  </select>
-                </div>
-              )}
             </>
           )}
         </section>
@@ -171,6 +147,7 @@ function RegistrationForm({
   const [positionId, setPositionId] = useState(r.positionId)
   const [mentorId, setMentorId] = useState(r.team.mentors[0]?.id || '')
   const [date, setDate] = useState('')
+  const [fullName, setFullName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   async function submit(event: FormEvent) {
@@ -180,6 +157,7 @@ function RegistrationForm({
     try {
       onLogin(
         await client.register(r.employeeId, {
+          fullName: fullName.trim(),
           positionId,
           ...(r.role === 'intern' ? { teamId, mentorId, internshipStartDate: date } : {}),
         }),
@@ -196,13 +174,28 @@ function RegistrationForm({
         <Icon name="back" />
         Другой сотрудник
       </button>
-      <h2>Привет, {r.firstName}!</h2>
+      <h2>Регистрация</h2>
       <p className="muted">
         {r.role === 'intern'
           ? 'Выбери команду, должность и наставника — по ним подготовим твой план.'
           : `Ты руководитель команды «${r.team.name}». Укажи должность для профиля.`}
       </p>
       <form onSubmit={submit}>
+        <label htmlFor="full-name">ФИО</label>
+        <input
+          id="full-name"
+          autoComplete="name"
+          placeholder="Иванов Иван Иванович"
+          value={fullName}
+          onChange={(event) => setFullName(event.target.value)}
+          required
+          minLength={3}
+          maxLength={150}
+          aria-describedby="full-name-hint"
+        />
+        <p id="full-name-hint" className="muted small">
+          Фамилия, имя и отчество, если есть.
+        </p>
         {r.role === 'intern' && (
           <>
             <label htmlFor="team">Команда</label>
