@@ -16,6 +16,7 @@ type Employee struct {
 	Email      string `gorm:"not null;uniqueIndex:ux_employees_email,expression:lower(email)"`
 	FirstName  string `gorm:"not null"`
 	SecondName string `gorm:"not null"`
+	About      string `gorm:"not null;default:''"` // Справка о сотруднике для контекста AI-buddy.
 	PositionID string `gorm:"not null"`
 	Position   Position
 	TeamID     string `gorm:"not null"`
@@ -29,7 +30,7 @@ type Position struct {
 	Name string `gorm:"not null"`
 }
 
-// Team — назначенная сотруднику команда из справочника. По ней подбираются наставники.
+// Team — команда из справочника. Стажёр выбирает её при первой регистрации.
 type Team struct {
 	ID          string `gorm:"primaryKey"`
 	Name        string `gorm:"not null"`
@@ -44,6 +45,7 @@ type Mentor struct {
 	FirstName  string `gorm:"not null"`
 	SecondName string `gorm:"not null"`
 	Contact    string `gorm:"not null;default:''"`
+	About      string `gorm:"not null;default:''"` // Область работы и вопросы, с которыми помогает наставник.
 }
 
 // Profile — профиль сотрудника в приложении. Для стажёра хранит наставника

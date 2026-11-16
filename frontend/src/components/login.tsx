@@ -70,7 +70,7 @@ export function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
               <p className="muted">
                 Введи демо-почту или ID сотрудника.
                 <br />
-                Команду и роль мы уже подготовили.
+                При первом входе выбери команду и наставника.
               </p>
               <form
                 onSubmit={(event: FormEvent) => {
@@ -124,6 +124,29 @@ export function Login({ onLogin }: { onLogin: (profile: Profile) => void }) {
                   Иван Петров
                 </button>
               </p>
+              {!isDemo && (
+                <div className="demo-profile-picker">
+                  <label htmlFor="demo-employee">Другие тестовые стажёры</label>
+                  <select
+                    id="demo-employee"
+                    disabled={busy}
+                    value=""
+                    onChange={(event) => void login(event.target.value)}
+                  >
+                    <option value="" disabled>
+                      Выбрать профиль
+                    </option>
+                    <option value="intern-maria">Мария Кузнецова</option>
+                    <option value="intern-pavel">Павел Новиков</option>
+                    <option value="intern-daria">Дарья Михайлова</option>
+                    <option value="intern-artem">Артём Волков</option>
+                    <option value="intern-polina">Полина Семёнова</option>
+                    <option value="intern-kirill">Кирилл Николаев</option>
+                    <option value="intern-sofya">Софья Тихонова</option>
+                    <option value="intern-egor">Егор Комаров</option>
+                  </select>
+                </div>
+              )}
             </>
           )}
         </section>
@@ -141,6 +164,10 @@ function RegistrationForm({
   onLogin: (profile: Profile) => void
   onBack: () => void
 }) {
+  const teams = r.teamOptions?.length ? r.teamOptions : [r.team]
+  const [teamId, setTeamId] = useState(r.team.id)
+  const team = teams.find((item) => item.id === teamId) || r.team
+  const positions = team.positionOptions || r.positionOptions
   const [positionId, setPositionId] = useState(r.positionId)
   const [mentorId, setMentorId] = useState(r.team.mentors[0]?.id || '')
   const [date, setDate] = useState('')
@@ -154,7 +181,7 @@ function RegistrationForm({
       onLogin(
         await client.register(r.employeeId, {
           positionId,
-          ...(r.role === 'intern' ? { mentorId, internshipStartDate: date } : {}),
+          ...(r.role === 'intern' ? { teamId, mentorId, internshipStartDate: date } : {}),
         }),
       )
     } catch (error) {
@@ -171,9 +198,33 @@ function RegistrationForm({
       </button>
       <h2>Привет, {r.firstName}!</h2>
       <p className="muted">
-        Ты в команде «{r.team.name}». Осталось немного, чтобы настроить твой план.
+        {r.role === 'intern'
+          ? 'Выбери команду, должность и наставника — по ним подготовим твой план.'
+          : `Ты руководитель команды «${r.team.name}». Укажи должность для профиля.`}
       </p>
       <form onSubmit={submit}>
+        {r.role === 'intern' && (
+          <>
+            <label htmlFor="team">Команда</label>
+            <select
+              id="team"
+              value={teamId}
+              required
+              onChange={(event) => {
+                const next = teams.find((item) => item.id === event.target.value)!
+                setTeamId(next.id)
+                setMentorId(next.mentors[0]?.id || '')
+                setPositionId((next.positionOptions || r.positionOptions)[0]?.id || '')
+              }}
+            >
+              {teams.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <label htmlFor="position">Должность</label>
         <select
           id="position"
@@ -181,7 +232,7 @@ function RegistrationForm({
           onChange={(event) => setPositionId(event.target.value)}
           required
         >
-          {r.positionOptions.map((option) => (
+          {positions.map((option) => (
             <option key={option.id} value={option.id}>
               {option.name}
             </option>
@@ -196,7 +247,7 @@ function RegistrationForm({
               onChange={(event) => setMentorId(event.target.value)}
               required
             >
-              {r.team.mentors.map((option) => (
+              {team.mentors.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.firstName} {option.secondName}
                 </option>

@@ -1369,3 +1369,14 @@ form > .error-notice {
     transition: none !important;
   }
 }
+
+.demo-profile-picker {
+  margin-top: 16px;
+}
+.person .person-about {
+  margin-top: 8px;
+  line-height: 1.6;
+}
+.team-intro {
+  white-space: pre-line;
+}

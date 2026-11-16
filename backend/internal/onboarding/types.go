@@ -4,6 +4,13 @@ type Contact struct { // имя, роль и необязательный email 
 	FullName string `json:"fullName"`
 	Position string `json:"position"`
 	Email    string `json:"email,omitempty"`
+	About    string `json:"about,omitempty"`
+}
+
+type Trainee struct {
+	FullName            string `json:"fullName"`
+	Position            string `json:"position"`
+	InternshipStartDate string `json:"internshipStartDate,omitempty"`
 }
 
 type TeamRef struct { /// идентификатор и название команды в карточке знакомства.
@@ -16,6 +23,7 @@ type TeamIntro struct { //  данные о команде, руководите
 	Description string  `json:"description"`
 	Manager     Contact `json:"manager"`
 	Mentor      Contact `json:"mentor"`
+	Trainee     Trainee `json:"trainee"`
 }
 
 type TaskDetails struct { // полная карточка одного этапа адаптации, открытая стажёром.

@@ -85,6 +85,8 @@ func (s *Service) GetTeamIntro(
 		Description: "Узнай, чем занимается команда и к кому обращаться.",
 		ChatEnabled: true,
 		TeamIntro: &TeamIntro{
+			Trainee: Trainee{FullName: fullName(intern.FirstName, intern.SecondName), Position: intern.Position.Name,
+				InternshipStartDate: startDate(profile.InternshipStartDate)},
 			Team: TeamRef{
 				ID:   intern.Team.ID,
 				Name: intern.Team.Name,
@@ -93,11 +95,14 @@ func (s *Service) GetTeamIntro(
 			Manager: Contact{
 				FullName: fullName(manager.FirstName, manager.SecondName),
 				Position: manager.Position.Name,
+				Email:    manager.Email,
+				About:    manager.About,
 			},
 			Mentor: Contact{
 				FullName: fullName(profile.Mentor.FirstName, profile.Mentor.SecondName),
 				Position: "Наставник",
 				Email:    profile.Mentor.Contact,
+				About:    profile.Mentor.About,
 			},
 		},
 	}, nil
@@ -111,6 +116,7 @@ func (s *Service) loadTeamIntroPeople(
 
 	err := s.db.WithContext(ctx).
 		Preload("Team").
+		Preload("Position").
 		Take(&intern, "id = ?", employeeID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return intern, models.Profile{}, models.Employee{}, ErrInternNotFound
@@ -154,6 +160,13 @@ func (s *Service) loadTeamIntroPeople(
 
 func fullName(firstName, secondName string) string {
 	return strings.TrimSpace(firstName + " " + secondName)
+}
+
+func startDate(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return value.Format(time.DateOnly)
 }
 
 func (s *Service) workingAccesses(ctx context.Context, employeeID string) (WorkingAccesses, error) {

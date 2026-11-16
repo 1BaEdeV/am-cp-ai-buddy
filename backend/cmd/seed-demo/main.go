@@ -16,14 +16,15 @@ import (
 
 func main() {
 	dir := flag.String("dir", "", "папка YAML-файлов; по умолчанию используются встроенные seeds/demo")
+	refreshKnowledge := flag.Bool("refresh-knowledge", false, "обновить описания и контакты демо-команд и людей без сброса профилей")
 	flag.Parse()
-	if err := run(*dir); err != nil {
+	if err := run(*dir, *refreshKnowledge); err != nil {
 		slog.Error("загрузить демо-данные", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(dir string) error {
+func run(dir string, refreshKnowledge bool) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -55,5 +56,11 @@ func run(dir string) error {
 		return err
 	}
 	slog.Info("демо-данные загружены; существующие записи сохранены", "counts", counts)
+	if refreshKnowledge {
+		if err := demoseed.RefreshKnowledge(ctx, conn, files); err != nil {
+			return err
+		}
+		slog.Info("описания и контакты демо обновлены")
+	}
 	return nil
 }

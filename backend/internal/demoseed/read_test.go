@@ -37,7 +37,7 @@ func TestReadEmbeddedDemo(t *testing.T) {
 	d := validData(t)
 	assert.Len(t, d.Teams, 10)
 	assert.Len(t, d.Positions, 10)
-	assert.Len(t, d.Mentors, 10)
+	assert.Len(t, d.Mentors, 20)
 	assert.Len(t, d.Employees, 20)
 	assert.Len(t, d.Profiles, 11)
 	assert.Len(t, d.Resources, 10)

@@ -32,11 +32,12 @@ func newTestDB(t *testing.T) *gorm.DB {
 		}))
 
 	stmts := []string{
+		`CREATE TABLE access_requirements (id TEXT PRIMARY KEY, team_id TEXT NOT NULL, position_id TEXT NOT NULL)`,
 		`CREATE TABLE positions (id TEXT PRIMARY KEY, name TEXT NOT NULL)`,
 		`CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '')`,
-		`CREATE TABLE mentors (id TEXT PRIMARY KEY, team_id TEXT NOT NULL, first_name TEXT NOT NULL, second_name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE mentors (id TEXT PRIMARY KEY, team_id TEXT NOT NULL, first_name TEXT NOT NULL, second_name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '', about TEXT NOT NULL DEFAULT '')`,
 		`CREATE INDEX idx_mentors_team_id ON mentors(team_id)`,
-		`CREATE TABLE employees (id TEXT PRIMARY KEY, email TEXT NOT NULL, first_name TEXT NOT NULL, second_name TEXT NOT NULL, position_id TEXT NOT NULL, team_id TEXT NOT NULL, role TEXT NOT NULL)`,
+		`CREATE TABLE employees (id TEXT PRIMARY KEY, email TEXT NOT NULL, first_name TEXT NOT NULL, second_name TEXT NOT NULL, position_id TEXT NOT NULL, team_id TEXT NOT NULL, role TEXT NOT NULL, about TEXT NOT NULL DEFAULT '')`,
 		`CREATE UNIQUE INDEX ux_employees_email ON employees(lower(email))`,
 		`CREATE TABLE profiles (id TEXT PRIMARY KEY, employee_id TEXT NOT NULL UNIQUE, mentor_id TEXT, internship_start_date DATE)`,
 	}
@@ -87,6 +88,7 @@ func seedBase(t *testing.T, db *gorm.DB) fixtures {
 		ID: f.OtherManager, Email: "mgr2@example.com", FirstName: "Boss", SecondName: "Two",
 		PositionID: f.Pos1, TeamID: f.Team1, Role: models.RoleManager,
 	}).Error)
+	require.NoError(t, db.Exec(`INSERT INTO access_requirements (id, team_id, position_id) VALUES (?, ?, ?)`, "rule-intern", f.Team2, f.Pos2).Error)
 	return f
 }
 
