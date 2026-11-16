@@ -4,13 +4,61 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Login } from './login'
 import { deferred, mockClient, profile, registration, resetClient } from '../test/fixtures'
 
+const mode = vi.hoisted(() => ({ demo: true }))
 vi.mock('../lib/client', async () => ({
   client: (await import('../test/fixtures')).mockClient,
-  isDemo: true,
+  get isDemo() {
+    return mode.demo
+  },
 }))
-beforeEach(resetClient)
+beforeEach(() => {
+  resetClient()
+  mode.demo = true
+})
 
 describe('Вход и регистрация', () => {
+  it('при смене команды предлагает её должности и наставников и сохраняет выбранного', async () => {
+    const search = {
+      id: 'search',
+      name: 'Поиск',
+      positionOptions: [{ id: 'go', name: 'Go-разработчик' }],
+      mentors: [
+        { id: 'katya', firstName: 'Катя', secondName: 'Волкова' },
+        { id: 'sasha', firstName: 'Саша', secondName: 'Лебедев' },
+      ],
+    }
+    mockClient.login.mockResolvedValue({
+      ...registration,
+      teamOptions: [registration.team, search],
+    })
+    render(<Login onLogin={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Иван Петров' }))
+    await screen.findByLabelText('Команда')
+    expect(screen.getByLabelText('Наставник')).toHaveValue('oleg')
+    await userEvent.selectOptions(screen.getByLabelText('Команда'), 'search')
+    expect(screen.getByLabelText('Должность')).toHaveValue('go')
+    expect(screen.getByLabelText('Наставник')).toHaveValue('katya')
+    expect(screen.queryByRole('option', { name: 'Олег Морозов' })).not.toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Наставник'), 'sasha')
+    fireEvent.change(screen.getByLabelText('Начало стажировки'), {
+      target: { value: '2026-11-16' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть мой план' }))
+    expect(mockClient.register).toHaveBeenCalledWith('intern-ivan', {
+      teamId: 'search',
+      positionId: 'go',
+      mentorId: 'sasha',
+      internshipStartDate: '2026-11-16',
+    })
+  })
+  it('в API-режиме позволяет выбрать другие тестовые профили', async () => {
+    mode.demo = false
+    mockClient.login.mockResolvedValue(registration)
+    render(<Login onLogin={vi.fn()} />)
+    await userEvent.selectOptions(screen.getByLabelText('Другие тестовые стажёры'), 'intern-maria')
+    expect(mockClient.login).toHaveBeenCalledWith('intern-maria')
+    expect(await screen.findByText('Привет, Иван!')).toBeVisible()
+  })
   it('отправляет введённый ID без пробелов и блокирует повторный вход до ответа', async () => {
     const pending = deferred<Awaited<ReturnType<typeof mockClient.login>>>()
     mockClient.login.mockReturnValue(pending.promise)
@@ -72,6 +120,7 @@ describe('Вход и регистрация', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Открыть мой план' }))
       expect(mockClient.register).toHaveBeenLastCalledWith('intern-ivan', {
         positionId: 'backend',
+        teamId: 'web',
         mentorId: 'oleg',
         internshipStartDate: '2026-11-16',
       })

@@ -13,6 +13,37 @@ async function prepare(resource = 'gitlab-search-api') {
 beforeEach(resetDemo)
 afterEach(() => vi.useRealTimers())
 describe('Демо-сценарий доступов', () => {
+  it('связывает выбранную команду с ресурсами, наставником и согласующим', async () => {
+    const input = {
+      teamId: 'team-search',
+      positionId: 'position-backend-go',
+      mentorId: 'mentor-sasha',
+      internshipStartDate: '2026-11-16',
+    }
+    const result = await client.register('intern-ivan', input)
+    expect(result.team.id).toBe('team-search')
+    expect(result.mentor?.id).toBe('mentor-sasha')
+    expect((await client.intro('intern-ivan')).mentor.fullName).toBe('Саша Лебедев')
+    expect((await client.accesses('intern-ivan')).resources.map((r) => r.id)).toContain(
+      'gitlab-search-api',
+    )
+    expect(await client.register('intern-ivan', input)).toEqual(result)
+    await expect(
+      client.register('intern-ivan', { ...input, teamId: 'team-web' }),
+    ).rejects.toMatchObject({ status: 400 })
+    await expect(
+      client.register('intern-ivan', { ...input, mentorId: 'mentor-katya' }),
+    ).rejects.toMatchObject({ code: 'profile_already_exists' })
+    await client.sendMessage(
+      'intern-ivan',
+      'working-accesses',
+      'Запроси доступ',
+      'gitlab-search-api',
+    )
+    expect(
+      (await client.chat('intern-ivan', 'working-accesses')).messages.at(-1)?.draft?.approverId,
+    ).toBe('manager-dmitry')
+  })
   it('проходит от 2/4 до 4/4 с отдельным подтверждением каждого ресурса', async () => {
     vi.useFakeTimers()
     expect((await client.accesses(intern)).progress.completed).toBe(2)

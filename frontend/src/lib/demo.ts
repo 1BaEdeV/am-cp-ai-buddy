@@ -238,6 +238,23 @@ function counts(requests: AccessRequest[]): RequestCounts {
   }
   return result
 }
+const demoTeams = [
+  {
+    id: 'team-web',
+    name: 'Веб-интерфейсы',
+    mentors: [
+      { id: 'mentor-oleg', firstName: 'Олег', secondName: 'Морозов' },
+      { id: 'mentor-vera', firstName: 'Вера', secondName: 'Крылова' },
+    ],
+    positionOptions: [{ id: 'position-frontend', name: 'Frontend-разработчик' }],
+  },
+  {
+    id: 'team-search',
+    name: 'Поиск',
+    mentors: [mentor, { id: 'mentor-sasha', firstName: 'Саша', secondName: 'Лебедев' }],
+    positionOptions: [{ id: 'position-backend-go', name: 'Backend-разработчик Go' }],
+  },
+]
 const newIntern: Extract<LoginResult, { status: 'registration_required' }> = {
   status: 'registration_required',
   employeeId: 'intern-ivan',
@@ -251,7 +268,8 @@ const newIntern: Extract<LoginResult, { status: 'registration_required' }> = {
     name: 'Веб-интерфейсы',
     mentors: [{ id: 'mentor-oleg', firstName: 'Олег', secondName: 'Морозов' }],
   },
-  positionOptions: [{ id: 'position-frontend', name: 'Frontend-разработчик' }],
+  positionOptions: demoTeams[0].positionOptions,
+  teamOptions: demoTeams,
 }
 
 export const demoClient: Client = {
@@ -269,14 +287,28 @@ export const demoClient: Client = {
     )
   },
   async register(id, input) {
+    const team = demoTeams.find((item) => item.id === (input.teamId || newIntern.team.id))
+    const selectedMentor = team?.mentors.find((item) => item.id === input.mentorId)
+    const position = team?.positionOptions.find((item) => item.id === input.positionId)
     if (
       id !== newIntern.employeeId ||
-      input.mentorId !== 'mentor-oleg' ||
-      input.positionId !== 'position-frontend' ||
+      !team ||
+      !selectedMentor ||
+      !position ||
       !/^\d{4}-\d{2}-\d{2}$/.test(input.internshipStartDate || '')
     )
       throw new APIError('Проверь данные профиля.', 400, 'invalid_input')
-    if (state.profiles[id]) return copy(state.profiles[id])
+    if (state.profiles[id]) {
+      const previous = state.profiles[id]
+      if (
+        previous.team.id !== team.id ||
+        previous.position !== position.name ||
+        previous.mentor?.id !== selectedMentor.id ||
+        previous.internshipStartDate !== input.internshipStartDate
+      )
+        throw new APIError('Профиль уже сохранён с другими данными.', 409, 'profile_already_exists')
+      return copy(previous)
+    }
     state.profiles[id] = {
       id: crypto.randomUUID(),
       employeeId: id,
@@ -284,9 +316,9 @@ export const demoClient: Client = {
       secondName: newIntern.secondName,
       email: newIntern.email,
       role: 'intern',
-      position: newIntern.positionOptions[0].name,
-      team: { id: newIntern.team.id, name: newIntern.team.name },
-      mentor: newIntern.team.mentors[0],
+      position: position.name,
+      team: { id: team.id, name: team.name },
+      mentor: selectedMentor,
       internshipStartDate: input.internshipStartDate,
     }
     save()

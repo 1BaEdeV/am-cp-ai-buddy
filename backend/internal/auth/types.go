@@ -35,12 +35,14 @@ type LoginResult struct {
 	Role            models.EmployeeRole `json:"role,omitempty"`
 	PositionID      string              `json:"positionId,omitempty"`
 	Team            *TeamOption         `json:"team,omitempty"`
+	TeamOptions     []TeamOption        `json:"teamOptions,omitempty"`
 	PositionOptions []Option            `json:"positionOptions,omitempty"`
 }
 
 // RegistrationInput содержит выбор пользователя при первом заполнении профиля.
-// Стажёр также указывает наставника и дату начала стажировки.
+// Стажёр также выбирает команду, её наставника и дату начала стажировки.
 type RegistrationInput struct {
+	TeamID              string `json:"teamId,omitempty"`
 	PositionID          string `json:"positionId,omitempty"`
 	MentorID            string `json:"mentorId,omitempty"`
 	InternshipStartDate string `json:"internshipStartDate,omitempty"` // Календарная дата в формате YYYY-MM-DD.
@@ -67,10 +69,11 @@ type Option struct {
 	Name string `json:"name"`
 }
 
-// TeamOption содержит назначенную сотруднику команду и её наставников.
+// TeamOption содержит доступную команду, её наставников и допустимые должности.
 type TeamOption struct {
 	Option
-	Mentors []MentorOption `json:"mentors"`
+	Mentors         []MentorOption `json:"mentors"`
+	PositionOptions []Option       `json:"positionOptions"`
 }
 
 // MentorOption содержит данные наставника для выбора в форме.

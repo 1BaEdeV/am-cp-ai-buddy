@@ -11,6 +11,10 @@ export interface Mentor {
   firstName: string
   secondName: string
 }
+export interface RegistrationTeam extends Option {
+  mentors: Mentor[]
+  positionOptions?: Option[]
+}
 export interface Profile {
   id: string
   employeeId: string
@@ -33,10 +37,12 @@ export type LoginResult =
       email: string
       role: Role
       positionId: string
-      team: Option & { mentors: Mentor[] }
+      team: RegistrationTeam
+      teamOptions?: RegistrationTeam[]
       positionOptions: Option[]
     }
 export interface RegistrationInput {
+  teamId?: string
   positionId: string
   mentorId?: string
   internshipStartDate?: string
@@ -126,8 +132,9 @@ export interface OnboardingPlan {
 export interface TeamIntro {
   team: Option
   description: string
-  manager: { fullName: string; position: string }
-  mentor: { fullName: string; position: string; email?: string }
+  manager: { fullName: string; position: string; email?: string; about?: string }
+  mentor: { fullName: string; position: string; email?: string; about?: string }
+  trainee?: { fullName: string; position: string; internshipStartDate?: string }
 }
 export interface ChatMessage {
   id: string
