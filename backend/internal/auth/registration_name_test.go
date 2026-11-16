@@ -86,7 +86,7 @@ func TestRegisterFullName(t *testing.T) {
 		failure := errors.New("profile write failed")
 		require.NoError(t, s.db.Callback().Create().Before("gorm:create").Register("test:reject_profile", func(tx *gorm.DB) {
 			if tx.Statement.Table == "profiles" {
-				tx.AddError(failure)
+				require.ErrorIs(t, tx.AddError(failure), failure)
 			}
 		}))
 		value := "Сидоров Алексей Сергеевич"

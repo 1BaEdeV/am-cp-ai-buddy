@@ -16,6 +16,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const (
+	runProcessingTimeout = time.Minute
+	staleRunTimeout      = 2 * time.Minute
+)
+
 // RunWorker периодически проверяет очередь и обрабатывает вопросы.
 // Он останавливается, когда отменяется ctx, например при Ctrl+C.
 func (s *Service) RunWorker(ctx context.Context, pollInterval time.Duration) {
@@ -49,6 +54,19 @@ func (s *Service) RunWorker(ctx context.Context, pollInterval time.Duration) {
 // ProcessNextRun обрабатывает один вопрос из очереди.
 // Возвращает false, если очередь пуста.
 func (s *Service) ProcessNextRun(ctx context.Context) (bool, error) {
+	ctx, cancelRun := context.WithTimeout(ctx, runProcessingTimeout)
+	defer cancelRun()
+	// После аварии процесса running не должен навсегда блокировать чат.
+	// Старый вопрос завершаем ошибкой, не повторяя возможные действия агента.
+	recoveryNow := time.Now().UTC()
+	if err := s.db.WithContext(ctx).Model(&models.ChatRun{}).
+		Where("status = ? AND updated_at <= ?", "running", recoveryNow.Add(-staleRunTimeout)).
+		Updates(map[string]any{
+			"status": "failed", "error_code": "processing_interrupted",
+			"error_message": "Обработка вопроса прервалась. Отправь его ещё раз.", "updated_at": recoveryNow,
+		}).Error; err != nil {
+		return false, fmt.Errorf("завершить прерванные вопросы чата: %w", err)
+	}
 	var run models.ChatRun
 	found := false
 
@@ -247,6 +265,9 @@ func (s *Service) ProcessNextRun(ctx context.Context) (bool, error) {
 
 // failRun сохраняет понятную ошибку, если worker не смог обработать вопрос.
 func (s *Service) failRun(ctx context.Context, run models.ChatRun) error {
+	// Отмена запроса или остановка worker не должны мешать записи ошибки.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	update := s.db.WithContext(ctx).
 		Model(&models.ChatRun{}).
 		Where("id = ? AND status = ?", run.ID, "running").
