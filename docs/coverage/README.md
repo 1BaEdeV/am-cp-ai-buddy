@@ -1,12 +1,12 @@
 # Отчёты покрытия
 
-Дата замеров: **16 ноября 2026**. Код: [`f5738f0`](https://github.com/1BaEdeV/am-cp-ai-buddy/commit/f5738f01909e32694d0199c25b13cf5f1c6139e9).
+Дата замеров: **16 ноября 2026**. Код: [`12edfc2`](https://github.com/1BaEdeV/am-cp-ai-buddy/commit/12edfc2e6f3bd90d3d58977222276c91d2c6c1fd).
 После изменения прикладного кода отчёты нужно обновить.
 
 | Компонент | Метрика | Результат | Отчёт |
 | --- | --- | --- | --- |
 | Backend | Go statements | **82,8%** | [backend.txt](backend.txt), [исходный профиль ZIP](backend-profile.zip) |
-| Frontend | Строки | **95,81%** — 504 из 526 | [frontend-summary.json](frontend-summary.json), [HTML ZIP](frontend-html.zip) |
+| Frontend | Строки | **95,80%** — 503 из 525 | [frontend-summary.json](frontend-summary.json), [HTML ZIP](frontend-html.zip) |
 | ML | Исполняемые строки | **84,75%** — 100 из 118 | [ml.txt](ml.txt), [исходный JSON](ml-coverage.json) |
 
 Go измеряет statements, поэтому его показатель не называется покрытием строк.
