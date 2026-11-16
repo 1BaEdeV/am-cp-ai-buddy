@@ -35,9 +35,10 @@ paths:
       description: |
         Backend находит сотрудника и его роль в тестовом справочнике.
         Если профиль уже заполнен, возвращается ready и роль для выбора экрана.
-        При первом входе возвращается registration_required с назначенной командой,
-        её наставниками и вариантами должности. Для стажёра варианты ограничены
-        должностями с настроенными обязательными доступами назначенной команды.
+        При первом входе возвращается registration_required с teamOptions:
+        командами, их наставниками и допустимыми должностями. Для стажёра доступны
+        команды с наставниками и настроенными обязательными доступами.
+        team и positionOptions задают первоначальный выбор для формы.
       security: []
       requestBody:
         required: true
@@ -124,13 +125,14 @@ paths:
       summary: Заполнить профиль сотрудника
       description: |
         Использует employeeId из результата registration_required в заголовке X-Demo-Employee-Id.
-        Команда назначена сотруднику в корпоративном справочнике и в форме доступна для просмотра.
-        Backend проверяет должность и принадлежность наставника назначенной команде.
+        Стажёр выбирает teamId из teamOptions, должность и наставника этой команды.
+        Backend проверяет должность и принадлежность наставника выбранной команде.
         Для стажёра выбранная должность должна иметь правила доступов этой команды;
         при отсутствии правил возвращается invalid_input без создания профиля.
         Стажёр указывает наставника и дату начала стажировки. Руководитель может выбрать должность.
-        Если positionId пропущен, используется текущая должность.
-        Имя, почта и роль берутся из тестового справочника. Должность и профиль сохраняются
+        Руководитель не может менять команду. При пропуске teamId и positionId
+        используются текущие значения сотрудника.
+        Имя, почта и роль берутся из тестового справочника. Команда, должность и профиль сохраняются
         в одной транзакции.
         Повтор с теми же данными возвращает сохранённый профиль.
       requestBody:
@@ -140,6 +142,7 @@ paths:
             schema:
               $ref: '#/components/schemas/RegistrationInput'
             example:
+              teamId: team-web
               positionId: position-frontend
               mentorId: mentor-oleg
               internshipStartDate: '2026-11-10'
@@ -1064,6 +1067,11 @@ components:
         positionId: {type: string, example: position-backend-go}
         team:
           $ref: '#/components/schemas/RegistrationTeam'
+        teamOptions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RegistrationTeam'
         positionOptions:
           type: array
           minItems: 1
@@ -1076,6 +1084,11 @@ components:
         - type: object
           required: [mentors]
           properties:
+            positionOptions:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/PositionRef'
             mentors:
               type: array
               items:
@@ -1085,6 +1098,11 @@ components:
       type: object
       additionalProperties: false
       properties:
+        teamId:
+          type: string
+          minLength: 1
+          description: Выбранная команда стажёра. Руководитель сохраняет свою команду.
+          example: team-web
         positionId: {type: string, minLength: 1, example: position-backend-go}
         mentorId:
           type: string
@@ -1282,6 +1300,13 @@ components:
           $ref: '#/components/schemas/Contact'
         mentor:
           $ref: '#/components/schemas/Contact'
+        trainee:
+          type: object
+          required: [fullName, position]
+          properties:
+            fullName: {type: string, example: Иван Петров}
+            position: {type: string, example: Frontend-разработчик}
+            internshipStartDate: {type: string, format: date}
 
     Contact:
       type: object
@@ -1290,6 +1315,7 @@ components:
         fullName: {type: string, example: Катя Волкова}
         position: {type: string, example: Наставник}
         email: {type: string, format: email, example: katya.volkova@example.test}
+        about: {type: string, description: Область работы и вопросы, с которыми помогает человек.}
 
     WorkingAccesses:
       type: object
