@@ -54,10 +54,10 @@ github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/service.go:40:				NewSer
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/service.go:44:				GetTaskChat			70.3%
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/service.go:137:				SendMessage			86.5%
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/service.go:260:				runView				75.0%
-github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:21:				RunWorker			0.0%
-github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:51:				ProcessNextRun			68.8%
-github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:249:				failRun				66.7%
-github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:271:				newID				100.0%
+github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:26:				RunWorker			0.0%
+github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:56:				ProcessNextRun			74.5%
+github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:267:				failRun				87.5%
+github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/chat/worker.go:292:				newID				100.0%
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/config/config.go:21:				Load				100.0%
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/db/migrate.go:13:				Migrate				66.7%
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/db/postgres.go:15:				Open				0.0%
@@ -144,4 +144,4 @@ github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/onboarding/service.go:200:			
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/onboarding/service.go:212:			mapAccessError			100.0%
 github.com/1BaEdeV/am-cp-ai-buddy/backend/internal/onboarding/service.go:225:			CompleteTeamIntro		84.2%
 github.com/1BaEdeV/am-cp-ai-buddy/backend/tests/integration/testdb/postgres.go:22:		Postgres			14.3%
-total:												(statements)			82.4%
+total:												(statements)			82.8%

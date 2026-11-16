@@ -1,11 +1,11 @@
 # Отчёты покрытия
 
-Дата замеров: **16 ноября 2026**. Код: [`10af7ad`](https://github.com/1BaEdeV/am-cp-ai-buddy/commit/10af7ad49b8e00d0ff72f01c87a22ff9a9c09e6f).
+Дата замеров: **16 ноября 2026**. Код: [`f5738f0`](https://github.com/1BaEdeV/am-cp-ai-buddy/commit/f5738f01909e32694d0199c25b13cf5f1c6139e9).
 После изменения прикладного кода отчёты нужно обновить.
 
 | Компонент | Метрика | Результат | Отчёт |
 | --- | --- | --- | --- |
-| Backend | Go statements | **82,4%** | [backend.txt](backend.txt), [исходный профиль ZIP](backend-profile.zip) |
+| Backend | Go statements | **82,8%** | [backend.txt](backend.txt), [исходный профиль ZIP](backend-profile.zip) |
 | Frontend | Строки | **95,81%** — 504 из 526 | [frontend-summary.json](frontend-summary.json), [HTML ZIP](frontend-html.zip) |
 | ML | Исполняемые строки | **84,75%** — 100 из 118 | [ml.txt](ml.txt), [исходный JSON](ml-coverage.json) |
 
